@@ -1,0 +1,26 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Playfair Display", ui-serif, Georgia, serif;
+  
+  --color-natural-bg: #F2F1EB;
+  --color-natural-primary: #849669; /* Sage Green */
+  --color-natural-dark: #5A5A40;    /* Olive Dark */
+  --color-natural-accent: #D48166;  /* Terracotta */
+  --color-natural-stone-50: #F9FAF7;
+  --color-natural-stone-100: #F5F5F0;
+}
+
+@layer base {
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:ital,wght@1,400;1,700&display=swap');
+
+  body {
+    @apply text-[#4A4A3F] bg-natural-bg font-sans;
+    -webkit-tap-highlight-color: transparent;
+  }
+}
+
+.prose h1 { @apply font-serif italic text-3xl text-natural-dark; }
+.prose h2 { @apply font-serif italic text-2xl text-natural-dark; }
+.prose p { @apply text-sm leading-relaxed text-[#6A6A5A]; }

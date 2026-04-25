@@ -1,0 +1,10 @@
+{
+  "name": "人员出行信息采集系统",
+  "description": "提供移动端 H5 人员出行采集、证件 OCR 识别及后台管理导出功能。",
+  "requestFramePermissions": [
+    "camera"
+  ],
+  "majorCapabilities": [
+    "OCR"
+  ]
+}
