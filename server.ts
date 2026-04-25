@@ -5,6 +5,7 @@ import { fileURLToPath } from 'url';
 import Database from 'better-sqlite3';
 import multer from 'multer';
 import * as xlsx from 'xlsx';
+import fs from 'fs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -13,7 +14,11 @@ const app = express();
 const PORT = 3000;
 
 // Database Setup
-const db = new Database('travel_info.db');
+const dataDir = path.join(process.cwd(), 'data');
+if (!fs.existsSync(dataDir)) {
+  fs.mkdirSync(dataDir, { recursive: true });
+}
+const db = new Database(path.join(dataDir, 'travel_info.db'));
 
 // Initialize tables
 db.exec(`
