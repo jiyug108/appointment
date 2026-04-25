@@ -6,6 +6,7 @@ import Database from 'better-sqlite3';
 import multer from 'multer';
 import * as xlsx from 'xlsx';
 import fs from 'fs';
+import tesseract from 'node-tesseract-ocr';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -85,9 +86,54 @@ db.prepare(`
   defaultConfig.max_companions
 );
 
+// OCR Setup
+const upload = multer({ dest: 'uploads/' });
+
+const tesseractConfig = {
+  lang: 'chi_sim+eng',
+  oem: 1,
+  psm: 3,
+};
+
 app.use(express.json({ limit: '10mb' }));
 
 // API Routes
+app.post('/api/ocr', upload.single('image'), async (req: any, res: any) => {
+  if (!req.file) {
+    return res.status(400).json({ error: 'No file uploaded' });
+  }
+
+  try {
+    const text = await tesseract.recognize(req.file.path, tesseractConfig);
+    
+    // Clean up
+    fs.unlinkSync(req.file.path);
+
+    // Extraction logic shifted to server for better control
+    const textSanitized = text.replace(/\s+/g, '');
+    const nameMatch = textSanitized.match(/姓名([^性别生日住址]{2,5})/);
+    const idMatch = textSanitized.match(/(\d{17}[\dXx])/);
+    
+    let birthDate = '';
+    if (idMatch) {
+      const id = idMatch[0];
+      birthDate = `${id.substring(6, 10)}-${id.substring(10, 12)}-${id.substring(12, 14)}`;
+    }
+
+    res.json({
+      success: true,
+      name: nameMatch ? nameMatch[1].trim() : '',
+      idNumber: idMatch ? idMatch[0] : '',
+      birthDate: birthDate,
+      raw: text // for debugging or extra fields
+    });
+  } catch (error) {
+    if (req.file) fs.unlinkSync(req.file.path);
+    console.error('OCR Error:', error);
+    res.status(500).json({ error: '识别失败' });
+  }
+});
+
 app.get('/api/config', (req, res) => {
   const config = db.prepare('SELECT * FROM config WHERE id = 1').get();
   res.json(config);

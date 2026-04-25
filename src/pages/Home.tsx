@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'motion/react';
-import { ChevronRight } from 'lucide-react';
+import { ChevronRight, Settings } from 'lucide-react';
 
 export default function Home() {
   const navigate = useNavigate();
@@ -16,7 +16,16 @@ export default function Home() {
   if (!config) return <div className="p-10 text-center">加载中...</div>;
 
   return (
-    <div className="flex flex-col min-h-screen">
+    <div className="flex flex-col min-h-screen relative">
+      {/* Admin Entry - Floating */}
+      <button 
+        onClick={() => navigate('/admin-login')}
+        className="absolute top-4 right-4 z-20 w-10 h-10 bg-white/10 hover:bg-white/30 backdrop-blur-md rounded-full flex items-center justify-center text-white/50 hover:text-white transition-all group"
+        title="Admin Portal"
+      >
+        <Settings size={18} className="group-hover:rotate-90 transition-transform duration-500" />
+      </button>
+
       {/* Header Image */}
       <div className="h-64 bg-natural-primary relative flex items-end p-8 overflow-hidden">
         {config.bg_image && (
@@ -52,7 +61,7 @@ export default function Home() {
           onClick={() => navigate('/form')}
           className="w-full h-14 bg-natural-dark text-white rounded-2xl font-bold tracking-widest text-xs uppercase flex items-center justify-center gap-2 active:scale-[0.98] transition-transform shadow-lg shadow-stone-200"
         >
-          开始录入信息
+          开始预约
           <ChevronRight size={16} />
         </button>
       </div>

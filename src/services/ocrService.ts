@@ -1,5 +1,3 @@
-import { createWorker } from 'tesseract.js';
-
 export interface IdCardInfo {
   name: string;
   idNumber: string;
@@ -7,36 +5,41 @@ export interface IdCardInfo {
 }
 
 /**
- * 本地 OCR 识别方案 (离线识别)
- * 模拟用户要求的 lf-OCR 接口风格
+ * OCR 识别方案 - 调用后端 System Tesseract 引擎
+ * 这种方案比 Tesseract.js 更快、更准确，且完全离线运行在服务器上。
  */
-export async function parseIdCard(base64Data: string, mimeType?: string): Promise<IdCardInfo> {
-  // 注意：此处使用 tesseract.js 实现纯前端识别
-  const worker = await createWorker('chi_sim+eng');
-  
+export async function parseIdCard(base64Data: string, mimeType: string = 'image/jpeg'): Promise<IdCardInfo> {
   try {
-    const { data: { text } } = await worker.recognize(base64Data);
-    
-    // 简单的信息提取逻辑
-    const nameMatch = text.match(/姓名\s*([^\s]{2,4})/);
-    const idMatch = text.match(/(\d{17}[\dXx])/);
-    
-    let birthDate = '';
-    if (idMatch) {
-      const id = idMatch[0];
-      birthDate = `${id.substring(6, 10)}-${id.substring(10, 12)}-${id.substring(12, 14)}`;
+    // 将 base64 转换为 Blob 然后发送
+    const byteString = atob(base64Data);
+    const ab = new ArrayBuffer(byteString.length);
+    const ia = new Uint8Array(ab);
+    for (let i = 0; i < byteString.length; i++) {
+      ia[i] = byteString.charCodeAt(i);
     }
+    const blob = new Blob([ab], { type: mimeType });
+    
+    const formData = new FormData();
+    formData.append('image', blob, 'idcard.jpg');
 
-    await worker.terminate();
+    const response = await fetch('/api/ocr', {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!response.ok) throw new Error('OCR API failed');
+    
+    const result = await response.json();
+    
+    if (!result.success) throw new Error(result.error || '识别失败');
 
     return {
-      name: nameMatch ? nameMatch[1] : '',
-      idNumber: idMatch ? idMatch[0] : '',
-      birthDate: birthDate
+      name: result.name || '',
+      idNumber: result.idNumber || '',
+      birthDate: result.birthDate || ''
     };
   } catch (error) {
-    if (worker) await worker.terminate();
-    console.error('Local OCR Error:', error);
-    throw new Error('本地识别失败，请手动录入');
+    console.error('Remote OCR Error:', error);
+    throw new Error('识别失败，请检查图片清晰度并确保服务器环境可正常运行 OCR 引擎');
   }
 }

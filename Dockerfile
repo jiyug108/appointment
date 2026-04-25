@@ -14,11 +14,14 @@ RUN npm run build
 # 运行环境使用 slim 节省空间，但需要确保 native 模块能运行
 FROM node:20-slim
 
-# 安装运行 better-sqlite3 可能需要的库 (通常 slim 版缺少这些)
+# 安装运行 better-sqlite3 和 Tesseract OCR 所需的库
 RUN apt-get update && apt-get install -y \
     python3 \
     make \
     g++ \
+    tesseract-ocr \
+    tesseract-ocr-chi-sim \
+    tesseract-ocr-eng \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

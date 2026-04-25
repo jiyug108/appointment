@@ -13,7 +13,8 @@ import {
   Calendar,
   Car,
   MapPin,
-  AlertCircle
+  AlertCircle,
+  Bus
 } from 'lucide-react';
 import { parseIdCard } from '../services/ocrService';
 
@@ -132,8 +133,19 @@ export default function FormPage() {
     e.preventDefault();
     
     // Validations
-    if (!formData.name || !formData.id_number || !formData.phone) {
-      alert('请填写主要人员的必填信息');
+    if (!formData.name || !formData.id_number || !formData.phone || !formData.birth_date) {
+      alert('请完成主要人员的所有必填信息');
+      return;
+    }
+
+    if (formData.transport_type === '自驾' && !formData.car_number) {
+      alert('请填写车牌号码');
+      return;
+    }
+
+    const incompleteCompanion = formData.companions.find(c => !c.name || !c.id_number || !c.phone || !c.birth_date);
+    if (incompleteCompanion) {
+      alert('所有同行人信息均为必填，请完善同行人资料');
       return;
     }
 
@@ -167,7 +179,7 @@ export default function FormPage() {
         <button onClick={() => navigate(-1)} className="p-2 -ml-2 text-stone-400">
           <ArrowLeft size={20} />
         </button>
-        <h1 className="ml-2 text-sm font-bold uppercase tracking-widest text-stone-800">信息采集录入</h1>
+        <h1 className="ml-2 text-sm font-bold uppercase tracking-widest text-stone-800">预约</h1>
       </div>
 
       <form onSubmit={handleSubmit} className="p-8 space-y-10 flex-1">
@@ -251,21 +263,27 @@ export default function FormPage() {
 
           {config.show_transport && (
             <div className="grid grid-cols-2 gap-3">
-              {[ { value: '统一大巴车', label: '统一大巴' }, { value: '自驾', label: '自驾出行' } ].map((item) => (
+              {[ 
+                { value: '统一大巴车', label: '统一大巴', icon: Bus }, 
+                { value: '自驾', label: '自驾出行', icon: Car } 
+              ].map((item) => (
                 <button
                   key={item.value}
                   type="button"
                   onClick={() => handleInputChange('transport_type', item.value)}
-                  className={`p-4 rounded-2xl border text-left transition-all ${
+                  className={`p-5 rounded-2xl border text-left transition-all flex items-center gap-4 ${
                     formData.transport_type === item.value 
-                    ? 'border-natural-primary bg-natural-stone-50' 
+                    ? 'border-natural-primary bg-natural-stone-50 ring-1 ring-natural-primary/20' 
                     : 'border-stone-100 opacity-60'
                   }`}
                 >
-                  <span className={`text-[10px] block font-bold uppercase mb-1 ${formData.transport_type === item.value ? 'text-natural-primary' : 'text-stone-400'}`}>
-                    人员类型
-                  </span>
-                  <span className="text-xs font-medium">{item.label}</span>
+                  <div className={`p-2 rounded-xl ${formData.transport_type === item.value ? 'bg-natural-primary text-white' : 'bg-stone-100 text-stone-400'}`}>
+                    <item.icon size={20} />
+                  </div>
+                  <div>
+                    <span className="text-xs font-bold block">{item.label}</span>
+                    <span className="text-[10px] text-stone-400 font-medium tracking-tighter uppercase">Selection</span>
+                  </div>
                 </button>
               ))}
             </div>
@@ -370,10 +388,11 @@ export default function FormPage() {
                 
                 <div className="grid gap-4">
                   <input 
+                    required
                     type="text" 
                     value={comp.name}
                     onChange={(e) => updateCompanion(idx, 'name', e.target.value)}
-                    placeholder="成员姓名"
+                    placeholder="成员姓名 (必填)"
                     className="w-full bg-white/50 border-b border-stone-200 py-2 px-1 text-sm focus:outline-none focus:border-natural-primary transition-colors"
                   />
                   <div className="grid grid-cols-2 gap-4">
@@ -386,6 +405,7 @@ export default function FormPage() {
                       <option value="护照">护照</option>
                     </select>
                     <input 
+                      required
                       type="date" 
                       value={comp.birth_date}
                       onChange={(e) => updateCompanion(idx, 'birth_date', e.target.value)}
@@ -393,17 +413,19 @@ export default function FormPage() {
                     />
                   </div>
                   <input 
+                    required
                     type="text" 
                     value={comp.id_number}
                     onChange={(e) => updateCompanion(idx, 'id_number', e.target.value)}
-                    placeholder="成员证件号"
+                    placeholder="成员证件号 (必填)"
                     className="w-full bg-white/50 border-b border-stone-200 py-2 px-1 text-sm focus:outline-none focus:border-natural-primary transition-colors"
                   />
                   <input 
+                    required
                     type="tel" 
                     value={comp.phone}
                     onChange={(e) => updateCompanion(idx, 'phone', e.target.value)}
-                    placeholder="联系电话 (选填)"
+                    placeholder="联系电话 (必填)"
                     className="w-full bg-white/50 border-b border-stone-200 py-2 px-1 text-sm focus:outline-none focus:border-natural-primary transition-colors"
                   />
                 </div>
@@ -427,7 +449,7 @@ export default function FormPage() {
           className="w-full h-14 bg-natural-dark text-white rounded-2xl font-bold tracking-widest text-xs uppercase flex items-center justify-center gap-2 active:scale-[0.98] transition-transform shadow-lg shadow-stone-200"
         >
           <Send size={16} />
-          完成并提交数据
+          提交
         </button>
       </div>
     </div>
