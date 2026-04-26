@@ -6,14 +6,24 @@ import { ChevronRight, Settings } from 'lucide-react';
 export default function Home() {
   const navigate = useNavigate();
   const [config, setConfig] = useState<any>(null);
+  const [stats, setStats] = useState<{total: number}>({ total: 0 });
 
   useEffect(() => {
-    fetch('/api/config')
-      .then(res => res.json())
-      .then(data => setConfig(data));
+    Promise.all([
+      fetch('/api/config').then(res => res.json()),
+      fetch('/api/stats').then(res => res.json())
+    ]).then(([configData, statsData]) => {
+      setConfig(configData);
+      setStats(statsData);
+    });
   }, []);
 
   if (!config) return <div className="p-10 text-center">加载中...</div>;
+
+  const today = new Date().toISOString().split('T')[0];
+  const isEnded = today > config.end_date;
+  const isMaxed = stats.total >= config.max_registrations;
+  const isDisabled = isEnded || isMaxed;
 
   return (
     <div className="flex flex-col min-h-screen relative">
@@ -44,6 +54,14 @@ export default function Home() {
           <h1 className="text-2xl text-white font-serif italic leading-tight mt-1">
             {config.title}
           </h1>
+          <div className="flex items-center gap-2 mt-2">
+            <span className="px-2 py-0.5 bg-white/20 backdrop-blur-md rounded text-[9px] text-white font-mono">
+              开始: {config.start_date}
+            </span>
+            <span className="px-2 py-0.5 bg-white/20 backdrop-blur-md rounded text-[9px] text-white font-mono">
+              结束: {config.end_date}
+            </span>
+          </div>
         </div>
       </div>
 
@@ -61,11 +79,16 @@ export default function Home() {
       {/* Button */}
       <div className="sticky bottom-0 p-6 bg-white/80 backdrop-blur-md border-t border-stone-50 mt-auto">
         <button
-          onClick={() => navigate('/form')}
-          className="w-full h-14 bg-natural-dark text-white rounded-2xl font-bold tracking-widest text-xs uppercase flex items-center justify-center gap-2 active:scale-[0.98] transition-transform shadow-lg shadow-stone-200"
+          onClick={() => !isDisabled && navigate('/form')}
+          disabled={isDisabled}
+          className={`w-full h-14 rounded-2xl font-bold tracking-widest text-xs uppercase flex items-center justify-center gap-2 transition-all shadow-lg shadow-stone-200 ${
+            isDisabled 
+              ? 'bg-stone-200 text-stone-400 cursor-not-allowed' 
+              : 'bg-natural-dark text-white active:scale-[0.98]'
+          }`}
         >
-          开始预约
-          <ChevronRight size={16} />
+          {isEnded ? '活动已结束' : isMaxed ? '报名人数已满' : '开始预约'}
+          {!isDisabled && <ChevronRight size={16} />}
         </button>
       </div>
     </div>

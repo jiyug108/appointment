@@ -24,6 +24,7 @@ interface Companion {
   id_number: string;
   phone: string;
   birth_date: string;
+  gender: string;
 }
 
 export default function FormPage() {
@@ -39,6 +40,8 @@ export default function FormPage() {
     id_number: '',
     phone: '',
     birth_date: '',
+    gender: '男',
+    remarks: '',
     transport_type: '统一大巴车',
     car_number: '',
     pickup_location: '',
@@ -65,10 +68,6 @@ export default function FormPage() {
   };
 
   const addCompanion = () => {
-    if (config && formData.companions.length >= config.max_companions) {
-      alert(`最多只能添加 ${config.max_companions} 位同行人`);
-      return;
-    }
     setFormData(prev => ({
       ...prev,
       companions: [...prev.companions, {
@@ -76,7 +75,8 @@ export default function FormPage() {
         id_type: '身份证',
         id_number: '',
         phone: '',
-        birth_date: ''
+        birth_date: '',
+        gender: '男'
       }]
     }));
   };
@@ -90,8 +90,89 @@ export default function FormPage() {
 
   const updateCompanion = (index: number, field: string, value: string) => {
     const updated = [...formData.companions];
-    updated[index] = { ...updated[index], [field]: value };
+    updated[index] = { ...updated[index], [field]: value } as Companion;
     setFormData(prev => ({ ...prev, companions: updated }));
+  };
+
+  const validateAge = (birthDateStr: string) => {
+    if (!birthDateStr || !config) return true;
+    const birthDate = new Date(birthDateStr);
+    const today = new Date();
+    let age = today.getFullYear() - birthDate.getFullYear();
+    const m = today.getMonth() - birthDate.getMonth();
+    if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
+      age--;
+    }
+    return age >= config.min_age && age <= config.max_age;
+  };
+
+  const DatePicker = ({ value, onChange, label }: { value: string, onChange: (val: string) => void, label?: string }) => {
+    const [localY, setLocalY] = useState('');
+    const [localM, setLocalM] = useState('');
+    const [localD, setLocalD] = useState('');
+
+    useEffect(() => {
+      if (value) {
+        const [y, m, d] = value.split('-');
+        setLocalY(y || '');
+        setLocalM(m ? parseInt(m).toString() : '');
+        setLocalD(d ? parseInt(d).toString() : '');
+      } else {
+        setLocalY('');
+        setLocalM('');
+        setLocalD('');
+      }
+    }, [value]);
+    
+    const handleDatePartChange = (part: 'y' | 'm' | 'd', val: string) => {
+      let newY = localY, newM = localM, newD = localD;
+      if (part === 'y') { newY = val; setLocalY(val); }
+      if (part === 'm') { newM = val; setLocalM(val); }
+      if (part === 'd') { newD = val; setLocalD(val); }
+      
+      if (newY && newM && newD) {
+        onChange(`${newY}-${newM.padStart(2, '0')}-${newD.padStart(2, '0')}`);
+      } else {
+        onChange('');
+      }
+    };
+
+    const currentYear = new Date().getFullYear();
+    const years = Array.from({ length: 120 }, (_, i) => (currentYear - i).toString());
+    const months = Array.from({ length: 12 }, (_, i) => (i + 1).toString());
+    const days = Array.from({ length: 31 }, (_, i) => (i + 1).toString());
+
+    return (
+      <div className="space-y-2">
+        {label && <label className="text-[10px] uppercase font-bold text-stone-400 tracking-widest">{label}</label>}
+        <div className="flex gap-2">
+          <select 
+            value={localY} 
+            onChange={(e) => handleDatePartChange('y', e.target.value)}
+            className="flex-1 border-b border-stone-200 py-3 text-sm focus:outline-none bg-transparent"
+          >
+            <option value="">年</option>
+            {years.map(year => <option key={year} value={year}>{year}年</option>)}
+          </select>
+          <select 
+            value={localM} 
+            onChange={(e) => handleDatePartChange('m', e.target.value)}
+            className="w-16 border-b border-stone-200 py-3 text-sm focus:outline-none bg-transparent"
+          >
+            <option value="">月</option>
+            {months.map(month => <option key={month} value={month}>{month}月</option>)}
+          </select>
+          <select 
+            value={localD} 
+            onChange={(e) => handleDatePartChange('d', e.target.value)}
+            className="w-16 border-b border-stone-200 py-3 text-sm focus:outline-none bg-transparent"
+          >
+            <option value="">日</option>
+            {days.map(day => <option key={day} value={day}>{day}日</option>)}
+          </select>
+        </div>
+      </div>
+    );
   };
 
   const handleOcr = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -138,6 +219,11 @@ export default function FormPage() {
       return;
     }
 
+    if (!validateAge(formData.birth_date)) {
+      alert(`主填报人年龄不在允许范围内 (${config.min_age}-${config.max_age}周岁)`);
+      return;
+    }
+
     if (formData.transport_type === '自驾' && !formData.car_number) {
       alert('请填写车牌号码');
       return;
@@ -147,6 +233,13 @@ export default function FormPage() {
     if (incompleteCompanion) {
       alert('所有同行人信息均为必填，请完善同行人资料');
       return;
+    }
+
+    for (const comp of formData.companions) {
+      if (!validateAge(comp.birth_date)) {
+        alert(`同行人 ${comp.name} 年龄不在允许范围内 (${config.min_age}-${config.max_age}周岁)`);
+        return;
+      }
     }
 
     if (!formData.luggage_confirmed) {
@@ -207,6 +300,7 @@ export default function FormPage() {
               >
                 <option value="身份证">身份证</option>
                 <option value="护照">护照</option>
+                <option value="港澳通行证">港澳通行证</option>
               </select>
               {formData.id_type === '身份证' && (
                 <button
@@ -228,6 +322,27 @@ export default function FormPage() {
               />
             </div>
 
+            {formData.id_type === '护照' && (
+              <div className="flex gap-4">
+                <div className="flex-1 space-y-2">
+                  <label className="text-[10px] uppercase font-bold text-stone-400 tracking-widest">性别</label>
+                  <div className="flex gap-4">
+                    {['男', '女'].map((g) => (
+                      <label key={g} className="flex items-center gap-2 cursor-pointer">
+                        <input 
+                          type="radio" 
+                          checked={formData.gender === g}
+                          onChange={() => handleInputChange('gender', g)}
+                          className="w-4 h-4 accent-natural-primary"
+                        />
+                        <span className="text-sm text-stone-600">{g}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
             <input 
               required
               type="text" 
@@ -237,7 +352,7 @@ export default function FormPage() {
               className="w-full border-b border-stone-200 py-3 text-sm focus:outline-none focus:border-natural-primary transition-colors bg-transparent"
             />
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-6">
               <input 
                 required
                 type="tel" 
@@ -246,22 +361,20 @@ export default function FormPage() {
                 placeholder="手机号码"
                 className="w-full border-b border-stone-200 py-3 text-sm focus:outline-none focus:border-natural-primary transition-colors bg-transparent"
               />
-              <input 
-                required
-                type="date" 
+              <DatePicker 
+                label="生日"
                 value={formData.birth_date}
-                onChange={(e) => handleInputChange('birth_date', e.target.value)}
-                className="w-full border-b border-stone-200 py-3 text-sm focus:outline-none focus:border-natural-primary transition-colors bg-transparent"
+                onChange={(val) => handleInputChange('birth_date', val)}
               />
             </div>
           </div>
         </div>
 
         {/* Travel Info Section */}
-        <div className="space-y-6 pt-6 border-t border-stone-50">
-          <label className="text-[11px] uppercase tracking-wider text-stone-400 font-bold block mb-4">出行偏好</label>
+        {config.show_transport && (
+          <div className="space-y-6 pt-6 border-t border-stone-50">
+            <label className="text-[11px] uppercase tracking-wider text-stone-400 font-bold block mb-4">出行方式</label>
 
-          {config.show_transport && (
             <div className="grid grid-cols-2 gap-3">
               {[ 
                 { value: '统一大巴车', label: '统一大巴', icon: Bus }, 
@@ -287,71 +400,82 @@ export default function FormPage() {
                 </button>
               ))}
             </div>
-          )}
 
-          <AnimatePresence>
-            {formData.transport_type === '自驾' && (
-              <motion.div
-                initial={{ height: 0, opacity: 0 }}
-                animate={{ height: 'auto', opacity: 1 }}
-                exit={{ height: 0, opacity: 0 }}
-              >
-                <input 
-                  type="text" 
-                  value={formData.car_number}
-                  onChange={(e) => handleInputChange('car_number', e.target.value)}
-                  placeholder="车牌号码 (如: 京A88888)"
-                  className="w-full border-b border-stone-200 py-3 text-sm focus:outline-none focus:border-natural-primary transition-colors bg-transparent"
-                />
-              </motion.div>
+            <AnimatePresence>
+              {formData.transport_type === '自驾' && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                >
+                  <input 
+                    type="text" 
+                    value={formData.car_number}
+                    onChange={(e) => handleInputChange('car_number', e.target.value)}
+                    placeholder="车牌号码 (如: 京A88888)"
+                    className="w-full border-b border-stone-200 py-3 text-sm focus:outline-none focus:border-natural-primary transition-colors bg-transparent"
+                  />
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {config.show_pickup && config.pickup_locations && (
+              <div className="space-y-3">
+                <span className="text-[10px] text-stone-400 font-bold uppercase tracking-wider">上车地点</span>
+                <div className="flex flex-wrap gap-2">
+                  {config.pickup_locations.split(',').map((loc: string) => (
+                    <button
+                      key={loc}
+                      type="button"
+                      onClick={() => handleInputChange('pickup_location', loc)}
+                      className={`px-4 py-2 rounded-full text-xs font-medium border transition-all ${
+                        formData.pickup_location === loc
+                        ? 'bg-natural-dark text-white border-natural-dark'
+                        : 'bg-white text-stone-500 border-stone-100'
+                      }`}
+                    >
+                      {loc}
+                    </button>
+                  ))}
+                </div>
+              </div>
             )}
-          </AnimatePresence>
 
-          {config.show_pickup && config.pickup_locations && (
-            <div className="space-y-3">
-              <span className="text-[10px] text-stone-400 font-bold uppercase tracking-wider">上车地点</span>
-              <div className="flex flex-wrap gap-2">
-                {config.pickup_locations.split(',').map((loc: string) => (
-                  <button
-                    key={loc}
-                    type="button"
-                    onClick={() => handleInputChange('pickup_location', loc)}
-                    className={`px-4 py-2 rounded-full text-xs font-medium border transition-all ${
-                      formData.pickup_location === loc
-                      ? 'bg-natural-dark text-white border-natural-dark'
-                      : 'bg-white text-stone-500 border-stone-100'
-                    }`}
-                  >
-                    {loc}
-                  </button>
-                ))}
+            <div 
+              onClick={() => handleInputChange('luggage_confirmed', !formData.luggage_confirmed)}
+              className={`flex items-center gap-4 p-5 rounded-3xl cursor-pointer border transition-all ${
+                formData.luggage_confirmed ? 'bg-natural-stone-50 border-natural-primary' : 'bg-stone-50 border-stone-100'
+              }`}
+            >
+              <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
+                formData.luggage_confirmed ? 'bg-natural-primary border-natural-primary text-white' : 'border-stone-300'
+              }`}>
+                {formData.luggage_confirmed && <Plus size={14} className="rotate-45" />}
+              </div>
+              <div className="flex-1">
+                <p className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">行李确认</p>
+                <p className="text-xs font-medium text-stone-700">我已知晓当天需自备行李箱</p>
               </div>
             </div>
-          )}
-
-          <div 
-            onClick={() => handleInputChange('luggage_confirmed', !formData.luggage_confirmed)}
-            className={`flex items-center gap-4 p-5 rounded-3xl cursor-pointer border transition-all ${
-              formData.luggage_confirmed ? 'bg-natural-stone-50 border-natural-primary' : 'bg-stone-50 border-stone-100'
-            }`}
-          >
-            <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${
-              formData.luggage_confirmed ? 'bg-natural-primary border-natural-primary text-white' : 'border-stone-300'
-            }`}>
-              {formData.luggage_confirmed && <Plus size={14} className="rotate-45" />}
-            </div>
-            <div className="flex-1">
-              <p className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">行李确认</p>
-              <p className="text-xs font-medium text-stone-700">我已知晓当天需自备行李箱</p>
-            </div>
           </div>
+        )}
+
+        {/* Remarks Section */}
+        <div className="space-y-4 pt-6 border-t border-stone-50">
+          <label className="text-[11px] uppercase tracking-wider text-stone-400 font-bold block">备注信息</label>
+          <textarea 
+            value={formData.remarks}
+            onChange={(e) => handleInputChange('remarks', e.target.value)}
+            placeholder="如有其他特殊需求或说明，请在此输入..."
+            className="w-full h-24 p-4 bg-stone-50 rounded-2xl text-sm border-none focus:ring-1 focus:ring-natural-primary outline-none transition-all resize-none"
+          />
         </div>
 
         {/* Companions Section */}
         <div className="space-y-6 pt-6 border-t border-stone-50">
           <div className="flex justify-between items-center mb-4">
             <label className="text-[11px] uppercase tracking-wider text-stone-400 font-bold">
-              同行人 ({formData.companions.length}/{config.max_companions})
+              同行人 ({formData.companions.length})
             </label>
             <button 
               type="button"
@@ -403,15 +527,29 @@ export default function FormPage() {
                     >
                       <option value="身份证">身份证</option>
                       <option value="护照">护照</option>
+                      <option value="港澳通行证">港澳通行证</option>
                     </select>
-                    <input 
-                      required
-                      type="date" 
-                      value={comp.birth_date}
-                      onChange={(e) => updateCompanion(idx, 'birth_date', e.target.value)}
-                      className="bg-transparent border-b border-stone-200 py-2 text-sm focus:outline-none"
-                    />
+                    {comp.id_type === '护照' && (
+                      <div className="flex gap-4 items-center">
+                        {['男', '女'].map((g) => (
+                          <label key={g} className="flex items-center gap-2 cursor-pointer">
+                            <input 
+                              type="radio" 
+                              checked={comp.gender === g}
+                              onChange={() => updateCompanion(idx, 'gender', g)}
+                              className="w-3 h-3 accent-natural-primary"
+                            />
+                            <span className="text-xs text-stone-600">{g}</span>
+                          </label>
+                        ))}
+                      </div>
+                    )}
                   </div>
+                  <DatePicker 
+                    label="生日"
+                    value={comp.birth_date}
+                    onChange={(val) => updateCompanion(idx, 'birth_date', val)}
+                  />
                   <input 
                     required
                     type="text" 

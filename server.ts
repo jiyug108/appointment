@@ -32,6 +32,11 @@ db.exec(`
     show_pickup BOOLEAN,
     pickup_locations TEXT,
     max_companions INTEGER,
+    start_date DATE,
+    end_date DATE,
+    max_registrations INTEGER,
+    min_age INTEGER DEFAULT 18,
+    max_age INTEGER DEFAULT 60,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
 
@@ -42,6 +47,7 @@ db.exec(`
     id_number TEXT,
     phone TEXT,
     birth_date TEXT,
+    gender TEXT,
     transport_type TEXT,
     car_number TEXT,
     pickup_location TEXT,
@@ -57,9 +63,28 @@ db.exec(`
     id_number TEXT,
     phone TEXT,
     birth_date TEXT,
+    gender TEXT,
+    remarks TEXT,
     FOREIGN KEY (entry_id) REFERENCES entries(id) ON DELETE CASCADE
   );
 `);
+
+// Migration: Add columns to existing tables if they don't exist
+const addColumn = (table: string, column: string, type: string) => {
+  const tableInfo = db.prepare(`PRAGMA table_info(${table})`).all() as any[];
+  if (!tableInfo.find(col => col.name === column)) {
+    db.prepare(`ALTER TABLE ${table} ADD COLUMN ${column} ${type}`).run();
+  }
+};
+
+addColumn('config', 'start_date', 'DATE');
+addColumn('config', 'end_date', 'DATE');
+addColumn('config', 'max_registrations', 'INTEGER');
+addColumn('config', 'min_age', 'INTEGER DEFAULT 18');
+addColumn('config', 'max_age', 'INTEGER DEFAULT 60');
+addColumn('entries', 'gender', 'TEXT');
+addColumn('entries', 'remarks', 'TEXT');
+addColumn('companions', 'gender', 'TEXT');
 
 // Initialize or Force Update default config for the new airport theme
 const defaultConfig = {
@@ -69,13 +94,18 @@ const defaultConfig = {
   pickup_locations: '航站楼P1停车场,机场大巴换乘中心,地铁盛乐机场站',
   show_transport: 1,
   show_pickup: 1,
-  max_companions: 3
+  max_companions: 3,
+  start_date: '2026-06-01',
+  end_date: '2026-12-31',
+  max_registrations: 9999,
+  min_age: 18,
+  max_age: 60
 };
 
 // We use INSERT OR REPLACE to force the update of the first config entry
 db.prepare(`
-  INSERT OR REPLACE INTO config (id, title, description, bg_image, show_transport, show_pickup, pickup_locations, max_companions)
-  VALUES (1, ?, ?, ?, ?, ?, ?, ?)
+  INSERT OR REPLACE INTO config (id, title, description, bg_image, show_transport, show_pickup, pickup_locations, max_companions, start_date, end_date, max_registrations, min_age, max_age)
+  VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `).run(
   defaultConfig.title, 
   defaultConfig.description, 
@@ -83,7 +113,12 @@ db.prepare(`
   defaultConfig.show_transport, 
   defaultConfig.show_pickup, 
   defaultConfig.pickup_locations, 
-  defaultConfig.max_companions
+  defaultConfig.max_companions,
+  defaultConfig.start_date,
+  defaultConfig.end_date,
+  defaultConfig.max_registrations,
+  defaultConfig.min_age,
+  defaultConfig.max_age
 );
 
 // OCR Setup
@@ -114,15 +149,23 @@ app.post('/api/ocr', upload.single('image'), async (req: any, res: any) => {
     
     // 1. Try to find "姓名" prefix (including common misrecognitions)
     let name = '';
-    const nameMatch = textSanitized.match(/(?:姓名|姓夕|名|姓)[:：]?([\u4e00-\u9fa5]{2,4})/);
+    const nameMatch = textSanitized.match(/(?:姓名|姓夕|姓多|名|姓)[:：]?([\u4e00-\u9fa5]{2,4})/);
     
     if (nameMatch) {
-      name = nameMatch[1];
+      name = nameMatch[1].trim();
     } else {
-      // 2. Fallback: try characters before "性别" or "男" or "女"
-      const genderMatch = textSanitized.match(/([\u4e00-\u9fa5]{2,4})(?=性别|男|女)/);
+      // 2. Fallback: try characters before "性别" or "男" or "女" or "民族"
+      const genderMatch = textSanitized.match(/([\u4e00-\u9fa5]{2,4})(?=性别|男|女|民族|族)/);
       if (genderMatch) {
-        name = genderMatch[1];
+        name = genderMatch[1].trim();
+      } else {
+        // 3. Last resort: match first 2-4 CJK characters before ID
+        const idIndex = textSanitized.search(/\d{15,18}/);
+        const preIdText = idIndex > 0 ? textSanitized.substring(0, idIndex) : textSanitized;
+        const fallbackNameMatch = preIdText.match(/([\u4e00-\u9fa5]{2,4})/);
+        if (fallbackNameMatch) {
+          name = fallbackNameMatch[1].trim();
+        }
       }
     }
 
@@ -154,21 +197,23 @@ app.get('/api/config', (req, res) => {
 });
 
 app.post('/api/config', (req, res) => {
-  const { title, description, bg_image, show_transport, show_pickup, pickup_locations, max_companions } = req.body;
+  const { title, description, bg_image, show_transport, show_pickup, pickup_locations, max_companions, start_date, end_date, max_registrations, min_age, max_age } = req.body;
   db.prepare(`
     UPDATE config SET 
       title = ?, description = ?, bg_image = ?, 
       show_transport = ?, show_pickup = ?, 
       pickup_locations = ?, max_companions = ?,
+      start_date = ?, end_date = ?, max_registrations = ?,
+      min_age = ?, max_age = ?,
       updated_at = CURRENT_TIMESTAMP
     WHERE id = 1
-  `).run(title, description, bg_image, show_transport ? 1 : 0, show_pickup ? 1 : 0, pickup_locations, max_companions);
+  `).run(title, description, bg_image, show_transport ? 1 : 0, show_pickup ? 1 : 0, pickup_locations, max_companions, start_date, end_date, max_registrations, min_age, max_age);
   res.json({ success: true });
 });
 
 app.post('/api/enroll', (req, res) => {
   const { 
-    name, id_type, id_number, phone, birth_date, 
+    name, id_type, id_number, phone, birth_date, gender, remarks,
     transport_type, car_number, pickup_location, luggage_confirmed,
     companions 
   } = req.body;
@@ -176,20 +221,20 @@ app.post('/api/enroll', (req, res) => {
   const transaction = db.transaction(() => {
     const result = db.prepare(`
       INSERT INTO entries (
-        name, id_type, id_number, phone, birth_date,
+        name, id_type, id_number, phone, birth_date, gender, remarks,
         transport_type, car_number, pickup_location, luggage_confirmed
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(name, id_type, id_number, phone, birth_date, transport_type, car_number, pickup_location, luggage_confirmed ? 1 : 0);
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(name, id_type, id_number, phone, birth_date, gender, remarks || '', transport_type, car_number, pickup_location, luggage_confirmed ? 1 : 0);
 
     const entryId = result.lastInsertRowid;
 
     if (companions && Array.isArray(companions)) {
       const companionStmt = db.prepare(`
-        INSERT INTO companions (entry_id, name, id_type, id_number, phone, birth_date)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO companions (entry_id, name, id_type, id_number, phone, birth_date, gender)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
       `);
       for (const comp of companions) {
-        companionStmt.run(entryId, comp.name, comp.id_type, comp.id_number, comp.phone, comp.birth_date);
+        companionStmt.run(entryId, comp.name, comp.id_type, comp.id_number, comp.phone, comp.birth_date, comp.gender);
       }
     }
     return entryId;
@@ -202,6 +247,21 @@ app.post('/api/enroll', (req, res) => {
     console.error(error);
     res.status(500).json({ error: '保存失败' });
   }
+});
+
+app.post('/api/clear-data', (req, res) => {
+  const { password } = req.body;
+  if (password !== 'admin123') { // Simple password check, can be configured
+    return res.status(403).json({ error: '密码错误' });
+  }
+  db.prepare('DELETE FROM entries').run();
+  db.prepare('DELETE FROM companions').run();
+  res.json({ success: true });
+});
+
+app.get('/api/stats', (req, res) => {
+  const count = db.prepare('SELECT COUNT(*) as total FROM entries').get() as { total: number };
+  res.json(count);
 });
 
 app.get('/api/entries', (req, res) => {
@@ -225,6 +285,7 @@ app.get('/api/export', (req, res) => {
     data.push({
       '类型': '主填报人',
       '姓名': entry.name,
+      '性别': entry.gender || '-',
       '证件类型': entry.id_type,
       '证件号': entry.id_number,
       '手机号': entry.phone,
@@ -232,6 +293,7 @@ app.get('/api/export', (req, res) => {
       '交通方式': entry.transport_type,
       '车牌号': entry.car_number || '无',
       '上车地点': entry.pickup_location,
+      '备注': entry.remarks || '-',
       '提交时间': entry.created_at,
       '关联主填报人': '-'
     });
@@ -241,6 +303,7 @@ app.get('/api/export', (req, res) => {
       data.push({
         '类型': '同行人',
         '姓名': comp.name,
+        '性别': comp.gender || '-',
         '证件类型': comp.id_type,
         '证件号': comp.id_number,
         '手机号': comp.phone,
@@ -248,6 +311,7 @@ app.get('/api/export', (req, res) => {
         '交通方式': '-',
         '车牌号': '-',
         '上车地点': '-',
+        '备注': entry.remarks || '-',
         '提交时间': '-',
         '关联主填报人': entry.name
       });

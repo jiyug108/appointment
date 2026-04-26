@@ -21,6 +21,7 @@ export default function AdminDashboard() {
   const [entries, setEntries] = useState<any[]>([]);
   const [config, setConfig] = useState<any>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [dateFilter, setDateFilter] = useState('');
   const [saveStatus, setSaveStatus] = useState('');
 
   useEffect(() => {
@@ -49,6 +50,28 @@ export default function AdminDashboard() {
     navigate('/admin-login');
   };
 
+  const handleClearData = async () => {
+    const password = prompt('请输入管理员密码执行清空操作：');
+    if (!password) return;
+
+    try {
+      const res = await fetch('/api/clear-data', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password })
+      });
+      const data = await res.json();
+      if (data.success) {
+        alert('数据已成功清空');
+        fetchData();
+      } else {
+        alert(data.error || '清空失败');
+      }
+    } catch (err) {
+      alert('网络错误');
+    }
+  };
+
   const saveConfig = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaveStatus('保存中...');
@@ -68,11 +91,18 @@ export default function AdminDashboard() {
     window.open('/api/export', '_blank');
   };
 
-  const filteredEntries = entries.filter(e => 
-    e.name.includes(searchTerm) || 
-    e.id_number.includes(searchTerm) || 
-    e.phone.includes(searchTerm)
-  );
+  const filteredEntries = entries.filter(e => {
+    const matchesSearch = e.name.includes(searchTerm) || 
+      e.id_number.includes(searchTerm) || 
+      e.phone.includes(searchTerm);
+    
+    if (dateFilter) {
+      const entryDate = new Date(e.created_at).toISOString().split('T')[0];
+      return matchesSearch && entryDate === dateFilter;
+    }
+    
+    return matchesSearch;
+  });
 
   if (!config) return <div className="p-10 text-center">加载中...</div>;
 
@@ -149,9 +179,31 @@ export default function AdminDashboard() {
                     className="w-full pl-11 pr-4 py-2 bg-stone-50 border border-stone-100 rounded-full text-xs outline-none focus:border-stone-200 transition-colors"
                   />
                 </div>
+                <div className="flex items-center gap-2">
+                  <input 
+                    type="date"
+                    value={dateFilter}
+                    onChange={(e) => setDateFilter(e.target.value)}
+                    className="px-4 py-2 bg-stone-50 border border-stone-100 rounded-xl text-xs outline-none"
+                  />
+                  {dateFilter && (
+                    <button 
+                      onClick={() => setDateFilter('')}
+                      className="text-[10px] text-stone-400 font-bold uppercase tracking-widest hover:text-natural-dark"
+                    >
+                      Clear Date
+                    </button>
+                  )}
+                </div>
                 <div className="flex gap-3">
                   <button onClick={fetchData} className="p-2.5 bg-stone-50 text-stone-400 rounded-xl hover:bg-stone-100 transition-colors">
                     <RefreshCw size={18} />
+                  </button>
+                  <button 
+                    onClick={handleClearData}
+                    className="px-6 py-2.5 bg-white border border-red-100 text-red-400 rounded-2xl text-[10px] font-bold uppercase tracking-widest hover:bg-red-50 transition-colors"
+                  >
+                    清空数据
                   </button>
                   <button 
                     onClick={exportExcel}
@@ -255,6 +307,68 @@ export default function AdminDashboard() {
                       className="w-full border-b border-stone-100 py-2 text-xs focus:outline-none"
                     />
                   </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-8">
+                  <div>
+                    <label className="text-[10px] uppercase font-bold text-stone-400 tracking-widest block mb-2">活动开始日期</label>
+                    <input 
+                      type="date" 
+                      value={config.start_date}
+                      onChange={(e) => setConfig({...config, start_date: e.target.value})}
+                      className="w-full border-b border-stone-100 py-2 text-xs focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] uppercase font-bold text-stone-400 tracking-widest block mb-2">活动结束日期</label>
+                    <input 
+                      type="date" 
+                      value={config.end_date}
+                      onChange={(e) => setConfig({...config, end_date: e.target.value})}
+                      className="w-full border-b border-stone-100 py-2 text-xs focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-3 gap-8">
+                  <div>
+                    <label className="text-[10px] uppercase font-bold text-stone-400 tracking-widest block mb-2">报名总人数上限</label>
+                    <input 
+                      type="number" 
+                      value={config.max_registrations}
+                      onChange={(e) => setConfig({...config, max_registrations: parseInt(e.target.value)})}
+                      className="w-full border-b border-stone-100 py-2 text-xs focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] uppercase font-bold text-stone-400 tracking-widest block mb-2">最小报名年龄</label>
+                    <input 
+                      type="number" 
+                      value={config.min_age}
+                      onChange={(e) => setConfig({...config, min_age: parseInt(e.target.value)})}
+                      className="w-full border-b border-stone-100 py-2 text-xs focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] uppercase font-bold text-stone-400 tracking-widest block mb-2">最大报名年龄</label>
+                    <input 
+                      type="number" 
+                      value={config.max_age}
+                      onChange={(e) => setConfig({...config, max_age: parseInt(e.target.value)})}
+                      className="w-full border-b border-stone-100 py-2 text-xs focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="text-[10px] uppercase font-bold text-stone-400 tracking-widest block mb-2">上车地点配置 (逗号分隔)</label>
+                  <input 
+                    type="text" 
+                    value={config.pickup_locations}
+                    onChange={(e) => setConfig({...config, pickup_locations: e.target.value})}
+                    placeholder="如：地点A,地点B,地点C"
+                    className="w-full border-b border-stone-100 py-2 text-sm focus:outline-none"
+                  />
                 </div>
 
                 <div className="flex gap-8">

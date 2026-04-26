@@ -41,34 +41,45 @@ export async function parseIdCard(base64Data: string, mimeType: string = 'image/
 
     const res = await ocrObj.recognize(img);
     
-    // PaddleOCR 返回的是文本行数组
-    const textLines = res || [];
+    // PaddleOCR returns text lines, but let's be robust
+    let textLines: string[] = [];
+    if (Array.isArray(res)) {
+      textLines = res;
+    } else if (res && typeof res === 'object' && Array.isArray(res.text)) {
+      textLines = res.text;
+    } else if (res && typeof res === 'string') {
+      textLines = [res];
+    }
+
     const fullText = textLines.join('');
     const textSanitized = fullText.replace(/\s+/g, '');
 
-    console.log('PaddleOCR Result:', textLines);
+    console.log('PaddleOCR Result lines:', textLines);
+    console.log('PaddleOCR Full text:', fullText);
 
-    if (textLines.length === 0) {
+    if (textLines.length === 0 && !fullText) {
       throw new Error('PaddleOCR empty result');
     }
 
     // 提取身份证信息
     let name = '';
     // 身份证姓名通常在开头，或者跟在“姓名”后面
-    // 同时也识别可能的误识，如“姓夕”
-    const nameMatch = textSanitized.match(/(?:姓名|姓夕|名|姓)[:：]?([\u4e00-\u9fa5]{2,4})/);
+    // 同时也识别可能的误识，如“姓夕”、“姓多”、“名”
+    const nameMatch = textSanitized.match(/(?:姓名|姓夕|姓多|名|姓)[:：]?([\u4e00-\u9fa5]{2,4})/);
     if (nameMatch) {
-      name = nameMatch[1];
+      name = nameMatch[1].trim();
     } else {
-      // 备选方案：查找性别前的汉字
-      const genderMatch = textSanitized.match(/([\u4e00-\u9fa5]{2,4})(?=性别|男|女)/);
+      // 备选方案：查找性别或民族前的汉字
+      const genderMatch = textSanitized.match(/([\u4e00-\u9fa5]{2,4})(?=性别|男|女|民族|族)/);
       if (genderMatch) {
-        name = genderMatch[1];
-      } else if (textLines.length > 0) {
-        // 如果都没匹配到，取第一行可能是姓名（通常身份证第一行是姓名）
-        const firstLine = textLines[0].replace(/\s+/g, '');
-        if (firstLine.length >= 2 && firstLine.length <= 4 && /^[\u4e00-\u9fa5]+$/.test(firstLine)) {
-          name = firstLine;
+        name = genderMatch[1].trim();
+      } else {
+        // 如果都没匹配到，尝试在全文中寻找最像名字的部分 (2-4个连续汉字，且在 ID 前面)
+        const idIndex = textSanitized.search(/\d{15,18}/);
+        const preIdText = idIndex > 0 ? textSanitized.substring(0, idIndex) : textSanitized;
+        const fallbackNameMatch = preIdText.match(/([\u4e00-\u9fa5]{2,4})/);
+        if (fallbackNameMatch) {
+          name = fallbackNameMatch[1].trim();
         }
       }
     }
