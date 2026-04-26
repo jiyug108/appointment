@@ -3,10 +3,10 @@ import { createServer as createViteServer } from 'vite';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import Database from 'better-sqlite3';
-import multer from 'multer';
 import * as xlsx from 'xlsx';
 import fs from 'fs';
-import tesseract from 'node-tesseract-ocr';
+import { createWorker } from 'tesseract.js';
+import sharp from 'sharp';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -121,73 +121,69 @@ db.prepare(`
   defaultConfig.max_age
 );
 
-// OCR Setup
-const upload = multer({ dest: 'uploads/' });
-
-const tesseractConfig = {
-  lang: 'chi_sim+eng',
-  oem: 1,
-  psm: 3,
-};
-
 app.use(express.json({ limit: '10mb' }));
 
 // API Routes
-app.post('/api/ocr', upload.single('image'), async (req: any, res: any) => {
-  if (!req.file) {
-    return res.status(400).json({ error: 'No file uploaded' });
+app.post('/api/ocr', async (req: any, res: any) => {
+  const { image } = req.body;
+  if (!image) {
+    return res.status(400).json({ error: 'No image data provided' });
   }
 
   try {
-    const text = await tesseract.recognize(req.file.path, tesseractConfig);
-    
-    // Clean up
-    fs.unlinkSync(req.file.path);
+    // 1. Data preprocessing: convert base64 to buffer
+    const base64Data = image.replace(/^data:image\/\w+;base64,/, "");
+    const imageBuffer = Buffer.from(base64Data, 'base64');
 
-    // Extraction logic shifted to server for better control
-    const textSanitized = text.replace(/\s+/g, '');
+    // 2. Image optimization for OCR
+    const optimizedBuffer = await sharp(imageBuffer)
+      .grayscale()
+      .normalize()
+      .sharpen()
+      .threshold(140) // Make text pop
+      .toBuffer();
+
+    // 3. Tesseract Recognition
+    const worker = await createWorker('chi_sim+eng');
+    const { data: { text } } = await worker.recognize(optimizedBuffer);
+    await worker.terminate();
+
+    const cleanText = text.replace(/\s+/g, '');
     
-    // 1. Try to find "姓名" prefix (including common misrecognitions)
+    // Extraction: ID Number
+    const idMatch = cleanText.match(/(\d{17}[\dXx])/);
+    const idNumber = idMatch ? idMatch[0].toUpperCase() : '';
+    
+    // Extraction: Name (Improved logic)
     let name = '';
-    const nameMatch = textSanitized.match(/(?:姓名|姓夕|姓多|名|姓)[:：]?([\u4e00-\u9fa5]{2,4})/);
+    const nameMatch = cleanText.match(/(?:姓名|姓夕|名|姓)[:：]?([\u4e00-\u9fa5]{2,4})/);
+    const genderAnchorMatch = cleanText.match(/([\u4e00-\u9fa5]{2,4})(?=性别|男|女|民族)/);
     
     if (nameMatch) {
-      name = nameMatch[1].trim();
+      name = nameMatch[1];
+    } else if (genderAnchorMatch) {
+      name = genderAnchorMatch[1];
     } else {
-      // 2. Fallback: try characters before "性别" or "男" or "女" or "民族"
-      const genderMatch = textSanitized.match(/([\u4e00-\u9fa5]{2,4})(?=性别|男|女|民族|族)/);
-      if (genderMatch) {
-        name = genderMatch[1].trim();
-      } else {
-        // 3. Last resort: match first 2-4 CJK characters before ID
-        const idIndex = textSanitized.search(/\d{15,18}/);
-        const preIdText = idIndex > 0 ? textSanitized.substring(0, idIndex) : textSanitized;
-        const fallbackNameMatch = preIdText.match(/([\u4e00-\u9fa5]{2,4})/);
-        if (fallbackNameMatch) {
-          name = fallbackNameMatch[1].trim();
-        }
-      }
+      // Fallback: first 2-4 CJK characters
+      const fallback = cleanText.match(/[\u4e00-\u9fa5]{2,4}/);
+      if (fallback) name = fallback[0];
     }
 
-    const idMatch = textSanitized.match(/(\d{17}[\dXx])/);
-    
+    // Extraction: Birth Date from ID (Most reliable)
     let birthDate = '';
-    if (idMatch) {
-      const id = idMatch[0];
-      birthDate = `${id.substring(6, 10)}-${id.substring(10, 12)}-${id.substring(12, 14)}`;
+    if (idNumber.length === 18) {
+      birthDate = `${idNumber.substring(6, 10)}-${idNumber.substring(10, 12)}-${idNumber.substring(12, 14)}`;
     }
 
     res.json({
       success: true,
-      name: name,
-      idNumber: idMatch ? idMatch[0] : '',
-      birthDate: birthDate,
-      raw: text 
+      name: name.trim(),
+      idNumber: idNumber,
+      birthDate: birthDate
     });
   } catch (error) {
-    if (req.file) fs.unlinkSync(req.file.path);
-    console.error('OCR Error:', error);
-    res.status(500).json({ error: '识别失败' });
+    console.error('Local OCR Error:', error);
+    res.status(500).json({ error: '本地识别失败，请尝试拍照更清晰' });
   }
 });
 

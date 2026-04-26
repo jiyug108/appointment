@@ -1,18 +1,16 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Camera, 
   Plus, 
   Trash2, 
   ArrowLeft, 
   Send, 
-  User, 
   IdCard, 
   Phone, 
   Calendar,
   Car,
-  MapPin,
   AlertCircle,
   Bus
 } from 'lucide-react';
@@ -26,6 +24,81 @@ interface Companion {
   birth_date: string;
   gender: string;
 }
+
+const DatePicker = ({ value, onChange, label }: { value: string, onChange: (val: string) => void, label?: string }) => {
+  const [localY, setLocalY] = useState('');
+  const [localM, setLocalM] = useState('');
+  const [localD, setLocalD] = useState('');
+
+  // Sync with parent ONLY if value is provided (e.g. OCR or initial load)
+  // or if the parent explicitly clears it.
+  useEffect(() => {
+    if (value) {
+      const parts = value.split('-');
+      if (parts.length === 3) {
+        setLocalY(parts[0]);
+        setLocalM(parseInt(parts[1]).toString());
+        setLocalD(parseInt(parts[2]).toString());
+      }
+    } else {
+      // Only clear if parents value is truly empty and we have state
+      // but we should be careful not to loop.
+    }
+  }, [value]);
+  
+  const handleDatePartChange = (part: 'y' | 'm' | 'd', val: string) => {
+    let newY = localY, newM = localM, newD = localD;
+    if (part === 'y') { newY = val; setLocalY(val); }
+    if (part === 'm') { newM = val; setLocalM(val); }
+    if (part === 'd') { newD = val; setLocalD(val); }
+    
+    // We only call onChange if it's a COMPLETE valid date
+    if (newY && newM && newD) {
+      onChange(`${newY}-${newM.padStart(2, '0')}-${newD.padStart(2, '0')}`);
+    } else if (!newY && !newM && !newD) {
+      onChange(''); // All cleared
+    }
+    // Note: We DON'T call onChange('') if it's just partial, 
+    // to prevent the parent from blowing away our local state in the useEffect.
+  };
+
+  const currentYear = new Date().getFullYear();
+  const years = Array.from({ length: 120 }, (_, i) => (currentYear - i).toString());
+  const months = Array.from({ length: 12 }, (_, i) => (i + 1).toString());
+  const days = Array.from({ length: 31 }, (_, i) => (i + 1).toString());
+
+  return (
+    <div className="space-y-2">
+      {label && <label className="text-[10px] uppercase font-bold text-stone-400 tracking-widest">{label}</label>}
+      <div className="flex gap-2">
+        <select 
+          value={localY} 
+          onChange={(e) => handleDatePartChange('y', e.target.value)}
+          className="flex-1 border-b border-stone-200 py-3 text-sm focus:outline-none bg-transparent"
+        >
+          <option value="">年</option>
+          {years.map(year => <option key={year} value={year}>{year}年</option>)}
+        </select>
+        <select 
+          value={localM} 
+          onChange={(e) => handleDatePartChange('m', e.target.value)}
+          className="w-16 border-b border-stone-200 py-3 text-sm focus:outline-none bg-transparent"
+        >
+          <option value="">月</option>
+          {months.map(month => <option key={month} value={month}>{month}月</option>)}
+        </select>
+        <select 
+          value={localD} 
+          onChange={(e) => handleDatePartChange('d', e.target.value)}
+          className="w-16 border-b border-stone-200 py-3 text-sm focus:outline-none bg-transparent"
+        >
+          <option value="">日</option>
+          {days.map(day => <option key={day} value={day}>{day}日</option>)}
+        </select>
+      </div>
+    </div>
+  );
+};
 
 export default function FormPage() {
   const navigate = useNavigate();
@@ -104,75 +177,6 @@ export default function FormPage() {
       age--;
     }
     return age >= config.min_age && age <= config.max_age;
-  };
-
-  const DatePicker = ({ value, onChange, label }: { value: string, onChange: (val: string) => void, label?: string }) => {
-    const [localY, setLocalY] = useState('');
-    const [localM, setLocalM] = useState('');
-    const [localD, setLocalD] = useState('');
-
-    useEffect(() => {
-      if (value) {
-        const [y, m, d] = value.split('-');
-        setLocalY(y || '');
-        setLocalM(m ? parseInt(m).toString() : '');
-        setLocalD(d ? parseInt(d).toString() : '');
-      } else {
-        setLocalY('');
-        setLocalM('');
-        setLocalD('');
-      }
-    }, [value]);
-    
-    const handleDatePartChange = (part: 'y' | 'm' | 'd', val: string) => {
-      let newY = localY, newM = localM, newD = localD;
-      if (part === 'y') { newY = val; setLocalY(val); }
-      if (part === 'm') { newM = val; setLocalM(val); }
-      if (part === 'd') { newD = val; setLocalD(val); }
-      
-      if (newY && newM && newD) {
-        onChange(`${newY}-${newM.padStart(2, '0')}-${newD.padStart(2, '0')}`);
-      } else {
-        onChange('');
-      }
-    };
-
-    const currentYear = new Date().getFullYear();
-    const years = Array.from({ length: 120 }, (_, i) => (currentYear - i).toString());
-    const months = Array.from({ length: 12 }, (_, i) => (i + 1).toString());
-    const days = Array.from({ length: 31 }, (_, i) => (i + 1).toString());
-
-    return (
-      <div className="space-y-2">
-        {label && <label className="text-[10px] uppercase font-bold text-stone-400 tracking-widest">{label}</label>}
-        <div className="flex gap-2">
-          <select 
-            value={localY} 
-            onChange={(e) => handleDatePartChange('y', e.target.value)}
-            className="flex-1 border-b border-stone-200 py-3 text-sm focus:outline-none bg-transparent"
-          >
-            <option value="">年</option>
-            {years.map(year => <option key={year} value={year}>{year}年</option>)}
-          </select>
-          <select 
-            value={localM} 
-            onChange={(e) => handleDatePartChange('m', e.target.value)}
-            className="w-16 border-b border-stone-200 py-3 text-sm focus:outline-none bg-transparent"
-          >
-            <option value="">月</option>
-            {months.map(month => <option key={month} value={month}>{month}月</option>)}
-          </select>
-          <select 
-            value={localD} 
-            onChange={(e) => handleDatePartChange('d', e.target.value)}
-            className="w-16 border-b border-stone-200 py-3 text-sm focus:outline-none bg-transparent"
-          >
-            <option value="">日</option>
-            {days.map(day => <option key={day} value={day}>{day}日</option>)}
-          </select>
-        </div>
-      </div>
-    );
   };
 
   const handleOcr = async (e: React.ChangeEvent<HTMLInputElement>) => {
