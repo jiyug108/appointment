@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'motion/react';
 import { 
-  Camera, 
   Plus, 
   Trash2, 
   ArrowLeft, 
@@ -14,7 +13,6 @@ import {
   AlertCircle,
   Bus
 } from 'lucide-react';
-import { parseIdCard } from '../services/ocrService';
 
 interface Companion {
   name: string;
@@ -104,7 +102,6 @@ export default function FormPage() {
   const navigate = useNavigate();
   const [config, setConfig] = useState<any>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [isOcrLoading, setIsOcrLoading] = useState(false);
 
   // Form State
   const [formData, setFormData] = useState({
@@ -118,6 +115,10 @@ export default function FormPage() {
     transport_type: '统一大巴车',
     car_number: '',
     pickup_location: '',
+    referrer_type: '机场',
+    referrer_name: '',
+    referrer_dept: '',
+    referrer_phone: '',
     luggage_confirmed: false,
     companions: [] as Companion[]
   });
@@ -127,11 +128,23 @@ export default function FormPage() {
       .then(res => res.json())
       .then(data => {
         setConfig(data);
+        const updates: any = {};
+        
         if (data.pickup_locations) {
           const locations = data.pickup_locations.split(',');
           if (locations.length > 0) {
-            setFormData(prev => ({ ...prev, pickup_location: locations[0] }));
+            updates.pickup_location = locations[0];
           }
+        }
+        
+        if (data.transport_config === 'car') {
+          updates.transport_type = '自驾';
+        } else if (data.transport_config === 'bus') {
+          updates.transport_type = '统一大巴车';
+        }
+        
+        if (Object.keys(updates).length > 0) {
+          setFormData(prev => ({ ...prev, ...updates }));
         }
       });
   }, []);
@@ -179,41 +192,6 @@ export default function FormPage() {
     return age >= config.min_age && age <= config.max_age;
   };
 
-  const handleOcr = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    setIsOcrLoading(true);
-    try {
-      const reader = new FileReader();
-      reader.onload = async () => {
-        try {
-          const base64Data = (reader.result as string).split(',')[1];
-          const result = await parseIdCard(base64Data, file.type);
-          
-          setFormData(prev => ({
-            ...prev,
-            name: result.name || prev.name,
-            id_number: result.idNumber || prev.id_number,
-            birth_date: result.birthDate || prev.birth_date
-          }));
-        } catch (err) {
-          console.error('OCR Process Error:', err);
-          alert('识别失败，请确保图片清晰并手动核对');
-        } finally {
-          setIsOcrLoading(false);
-        }
-      };
-      reader.readAsDataURL(file);
-    } catch (err) {
-      console.error('File Reader Error:', err);
-      alert('文件读取失败');
-      setIsOcrLoading(false);
-    } finally {
-      if (fileInputRef.current) fileInputRef.current.value = '';
-    }
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -231,6 +209,17 @@ export default function FormPage() {
     if (formData.transport_type === '自驾' && !formData.car_number) {
       alert('请填写车牌号码');
       return;
+    }
+
+    if (config.show_referrer) {
+      if (!formData.referrer_name) {
+        alert('请填写推荐人姓名');
+        return;
+      }
+      if (formData.referrer_type === '机场' && (!formData.referrer_dept || !formData.referrer_phone)) {
+        alert('请完善机场推荐人的部门及联系方式');
+        return;
+      }
     }
 
     const incompleteCompanion = formData.companions.find(c => !c.name || !c.id_number || !c.phone || !c.birth_date);
@@ -306,24 +295,6 @@ export default function FormPage() {
                 <option value="护照">护照</option>
                 <option value="港澳通行证">港澳通行证</option>
               </select>
-              {formData.id_type === '身份证' && (
-                <button
-                  type="button"
-                  disabled={isOcrLoading}
-                  onClick={() => fileInputRef.current?.click()}
-                  className="flex items-center gap-2 px-6 bg-natural-stone-100 rounded-full text-[10px] font-bold text-natural-dark h-10 mt-1 hover:bg-natural-primary hover:text-white transition-all active:scale-95"
-                >
-                  <Camera size={14} />
-                  {isOcrLoading ? '识别中...' : 'OCR 识别'}
-                </button>
-              )}
-              <input 
-                type="file" 
-                ref={fileInputRef} 
-                onChange={handleOcr} 
-                accept="image/*" 
-                className="hidden" 
-              />
             </div>
 
             {formData.id_type === '护照' && (
@@ -375,15 +346,15 @@ export default function FormPage() {
         </div>
 
         {/* Travel Info Section */}
-        {config.show_transport && (
+        {config.transport_config !== 'none' && (
           <div className="space-y-6 pt-6 border-t border-stone-50">
             <label className="text-[11px] uppercase tracking-wider text-stone-400 font-bold block mb-4">出行方式</label>
 
-            <div className="grid grid-cols-2 gap-3">
+            <div className={`grid ${config.transport_config === 'both' ? 'grid-cols-2' : 'grid-cols-1'} gap-3`}>
               {[ 
-                { value: '统一大巴车', label: '统一大巴', icon: Bus }, 
-                { value: '自驾', label: '自驾出行', icon: Car } 
-              ].map((item) => (
+                { value: '统一大巴车', label: '统一大巴', icon: Bus, visible: config.transport_config === 'both' || config.transport_config === 'bus' }, 
+                { value: '自驾', label: '自驾出行', icon: Car, visible: config.transport_config === 'both' || config.transport_config === 'car' } 
+              ].filter(item => item.visible).map((item) => (
                 <button
                   key={item.value}
                   type="button"
@@ -460,6 +431,66 @@ export default function FormPage() {
                 <p className="text-[10px] font-bold text-stone-400 uppercase tracking-widest">行李确认</p>
                 <p className="text-xs font-medium text-stone-700">我已知晓当天需自备行李箱</p>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Referrer Section */}
+        {!!config.show_referrer && (
+          <div className="space-y-6 pt-6 border-t border-stone-50">
+            <label className="text-[11px] uppercase tracking-wider text-stone-400 font-bold block mb-4">推荐人信息</label>
+            
+            <div className="flex gap-4 mb-6">
+              {['机场', '其它'].map((type) => (
+                <button
+                  key={type}
+                  type="button"
+                  onClick={() => handleInputChange('referrer_type', type)}
+                  className={`flex-1 py-3 rounded-xl border text-xs font-bold transition-all ${
+                    formData.referrer_type === type 
+                    ? 'border-natural-primary bg-natural-stone-50 text-natural-primary' 
+                    : 'border-stone-100 text-stone-400'
+                  }`}
+                >
+                  {type}
+                </button>
+              ))}
+            </div>
+
+            <div className="space-y-4">
+              <input 
+                type="text" 
+                value={formData.referrer_name}
+                onChange={(e) => handleInputChange('referrer_name', e.target.value)}
+                placeholder="推荐人姓名"
+                className="w-full border-b border-stone-200 py-3 text-sm focus:outline-none focus:border-natural-primary transition-colors bg-transparent"
+              />
+              
+              <AnimatePresence>
+                {formData.referrer_type === '机场' && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    className="space-y-4 overflow-hidden"
+                  >
+                    <input 
+                      type="text" 
+                      value={formData.referrer_dept}
+                      onChange={(e) => handleInputChange('referrer_dept', e.target.value)}
+                      placeholder="部门"
+                      className="w-full border-b border-stone-200 py-3 text-sm focus:outline-none focus:border-natural-primary transition-colors bg-transparent"
+                    />
+                    <input 
+                      type="tel" 
+                      value={formData.referrer_phone}
+                      onChange={(e) => handleInputChange('referrer_phone', e.target.value)}
+                      placeholder="联系方式"
+                      className="w-full border-b border-stone-200 py-3 text-sm focus:outline-none focus:border-natural-primary transition-colors bg-transparent"
+                    />
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
           </div>
         )}

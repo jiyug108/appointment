@@ -5,8 +5,6 @@ import { fileURLToPath } from 'url';
 import Database from 'better-sqlite3';
 import * as xlsx from 'xlsx';
 import fs from 'fs';
-import { createWorker } from 'tesseract.js';
-import sharp from 'sharp';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -28,15 +26,17 @@ db.exec(`
     title TEXT,
     description TEXT,
     bg_image TEXT,
-    show_transport BOOLEAN,
+    transport_config TEXT DEFAULT 'both',
     show_pickup BOOLEAN,
     pickup_locations TEXT,
+    show_referrer BOOLEAN DEFAULT 0,
     max_companions INTEGER,
     start_date DATE,
     end_date DATE,
     max_registrations INTEGER,
     min_age INTEGER DEFAULT 18,
     max_age INTEGER DEFAULT 60,
+    is_active BOOLEAN DEFAULT 1,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
 
@@ -51,6 +51,10 @@ db.exec(`
     transport_type TEXT,
     car_number TEXT,
     pickup_location TEXT,
+    referrer_type TEXT,
+    referrer_name TEXT,
+    referrer_dept TEXT,
+    referrer_phone TEXT,
     luggage_confirmed BOOLEAN,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
@@ -77,13 +81,20 @@ const addColumn = (table: string, column: string, type: string) => {
   }
 };
 
+addColumn('config', 'transport_config', 'TEXT DEFAULT "both"');
 addColumn('config', 'start_date', 'DATE');
 addColumn('config', 'end_date', 'DATE');
 addColumn('config', 'max_registrations', 'INTEGER');
 addColumn('config', 'min_age', 'INTEGER DEFAULT 18');
 addColumn('config', 'max_age', 'INTEGER DEFAULT 60');
+addColumn('config', 'show_referrer', 'BOOLEAN DEFAULT 0');
+addColumn('config', 'is_active', 'BOOLEAN DEFAULT 1');
 addColumn('entries', 'gender', 'TEXT');
 addColumn('entries', 'remarks', 'TEXT');
+addColumn('entries', 'referrer_type', 'TEXT');
+addColumn('entries', 'referrer_name', 'TEXT');
+addColumn('entries', 'referrer_dept', 'TEXT');
+addColumn('entries', 'referrer_phone', 'TEXT');
 addColumn('companions', 'gender', 'TEXT');
 
 // Initialize or Force Update default config for the new airport theme
@@ -92,8 +103,9 @@ const defaultConfig = {
   description: '<h2>盛乐启程 · 预见未来</h2><p>欢迎参与呼和浩特盛乐国际机场（Hohhot Shengle International Airport）开通体验活动。作为首批“盛乐体验官”，您将深度参与新机场的值机流程测试、候机楼智慧设施体验及航站楼转运模拟。</p><ul><li>活动时间：2026年6月15日 - 6月20日</li><li>报到地点：盛乐国际机场 T1航站楼 2号值机岛</li><li>注意事项：请务必携带二代身份证原件，录入信息需与证件严格一致。</li></ul>',
   bg_image: 'https://images.unsplash.com/photo-1530521954074-e64f6810b32d?auto=format&fit=crop&q=80&w=1200',
   pickup_locations: '航站楼P1停车场,机场大巴换乘中心,地铁盛乐机场站',
-  show_transport: 1,
+  transport_config: 'both',
   show_pickup: 1,
+  is_active: 1,
   max_companions: 3,
   start_date: '2026-06-01',
   end_date: '2026-12-31',
@@ -104,15 +116,17 @@ const defaultConfig = {
 
 // We use INSERT OR REPLACE to force the update of the first config entry
 db.prepare(`
-  INSERT OR REPLACE INTO config (id, title, description, bg_image, show_transport, show_pickup, pickup_locations, max_companions, start_date, end_date, max_registrations, min_age, max_age)
-  VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  INSERT OR REPLACE INTO config (id, title, description, bg_image, transport_config, show_pickup, pickup_locations, show_referrer, is_active, max_companions, start_date, end_date, max_registrations, min_age, max_age)
+  VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `).run(
   defaultConfig.title, 
   defaultConfig.description, 
   defaultConfig.bg_image, 
-  defaultConfig.show_transport, 
+  defaultConfig.transport_config, 
   defaultConfig.show_pickup, 
   defaultConfig.pickup_locations, 
+  0,
+  defaultConfig.is_active,
   defaultConfig.max_companions,
   defaultConfig.start_date,
   defaultConfig.end_date,
@@ -124,86 +138,24 @@ db.prepare(`
 app.use(express.json({ limit: '10mb' }));
 
 // API Routes
-app.post('/api/ocr', async (req: any, res: any) => {
-  const { image } = req.body;
-  if (!image) {
-    return res.status(400).json({ error: 'No image data provided' });
-  }
-
-  try {
-    // 1. Data preprocessing: convert base64 to buffer
-    const base64Data = image.replace(/^data:image\/\w+;base64,/, "");
-    const imageBuffer = Buffer.from(base64Data, 'base64');
-
-    // 2. Image optimization for OCR
-    const optimizedBuffer = await sharp(imageBuffer)
-      .grayscale()
-      .normalize()
-      .sharpen()
-      .threshold(140) // Make text pop
-      .toBuffer();
-
-    // 3. Tesseract Recognition
-    const worker = await createWorker('chi_sim+eng');
-    const { data: { text } } = await worker.recognize(optimizedBuffer);
-    await worker.terminate();
-
-    const cleanText = text.replace(/\s+/g, '');
-    
-    // Extraction: ID Number
-    const idMatch = cleanText.match(/(\d{17}[\dXx])/);
-    const idNumber = idMatch ? idMatch[0].toUpperCase() : '';
-    
-    // Extraction: Name (Improved logic)
-    let name = '';
-    const nameMatch = cleanText.match(/(?:姓名|姓夕|名|姓)[:：]?([\u4e00-\u9fa5]{2,4})/);
-    const genderAnchorMatch = cleanText.match(/([\u4e00-\u9fa5]{2,4})(?=性别|男|女|民族)/);
-    
-    if (nameMatch) {
-      name = nameMatch[1];
-    } else if (genderAnchorMatch) {
-      name = genderAnchorMatch[1];
-    } else {
-      // Fallback: first 2-4 CJK characters
-      const fallback = cleanText.match(/[\u4e00-\u9fa5]{2,4}/);
-      if (fallback) name = fallback[0];
-    }
-
-    // Extraction: Birth Date from ID (Most reliable)
-    let birthDate = '';
-    if (idNumber.length === 18) {
-      birthDate = `${idNumber.substring(6, 10)}-${idNumber.substring(10, 12)}-${idNumber.substring(12, 14)}`;
-    }
-
-    res.json({
-      success: true,
-      name: name.trim(),
-      idNumber: idNumber,
-      birthDate: birthDate
-    });
-  } catch (error) {
-    console.error('Local OCR Error:', error);
-    res.status(500).json({ error: '本地识别失败，请尝试拍照更清晰' });
-  }
-});
-
 app.get('/api/config', (req, res) => {
   const config = db.prepare('SELECT * FROM config WHERE id = 1').get();
   res.json(config);
 });
 
 app.post('/api/config', (req, res) => {
-  const { title, description, bg_image, show_transport, show_pickup, pickup_locations, max_companions, start_date, end_date, max_registrations, min_age, max_age } = req.body;
+  const { title, description, bg_image, transport_config, show_pickup, pickup_locations, show_referrer, is_active, max_companions, start_date, end_date, max_registrations, min_age, max_age } = req.body;
   db.prepare(`
     UPDATE config SET 
       title = ?, description = ?, bg_image = ?, 
-      show_transport = ?, show_pickup = ?, 
-      pickup_locations = ?, max_companions = ?,
+      transport_config = ?, show_pickup = ?, 
+      pickup_locations = ?, show_referrer = ?, 
+      is_active = ?, max_companions = ?,
       start_date = ?, end_date = ?, max_registrations = ?,
       min_age = ?, max_age = ?,
       updated_at = CURRENT_TIMESTAMP
     WHERE id = 1
-  `).run(title, description, bg_image, show_transport ? 1 : 0, show_pickup ? 1 : 0, pickup_locations, max_companions, start_date, end_date, max_registrations, min_age, max_age);
+  `).run(title, description, bg_image, transport_config, show_pickup ? 1 : 0, pickup_locations, show_referrer ? 1 : 0, is_active ? 1 : 0, max_companions, start_date, end_date, max_registrations, min_age, max_age);
   res.json({ success: true });
 });
 
@@ -211,6 +163,7 @@ app.post('/api/enroll', (req, res) => {
   const { 
     name, id_type, id_number, phone, birth_date, gender, remarks,
     transport_type, car_number, pickup_location, luggage_confirmed,
+    referrer_type, referrer_name, referrer_dept, referrer_phone,
     companions 
   } = req.body;
 
@@ -218,9 +171,14 @@ app.post('/api/enroll', (req, res) => {
     const result = db.prepare(`
       INSERT INTO entries (
         name, id_type, id_number, phone, birth_date, gender, remarks,
-        transport_type, car_number, pickup_location, luggage_confirmed
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(name, id_type, id_number, phone, birth_date, gender, remarks || '', transport_type, car_number, pickup_location, luggage_confirmed ? 1 : 0);
+        transport_type, car_number, pickup_location, luggage_confirmed,
+        referrer_type, referrer_name, referrer_dept, referrer_phone
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      name, id_type, id_number, phone, birth_date, gender, remarks || '', 
+      transport_type, car_number, pickup_location, luggage_confirmed ? 1 : 0,
+      referrer_type, referrer_name, referrer_dept, referrer_phone
+    );
 
     const entryId = result.lastInsertRowid;
 
@@ -289,6 +247,10 @@ app.get('/api/export', (req, res) => {
       '交通方式': entry.transport_type,
       '车牌号': entry.car_number || '无',
       '上车地点': entry.pickup_location,
+      '推荐人类型': entry.referrer_type || '-',
+      '推荐人姓名': entry.referrer_name || '-',
+      '推荐人部门': entry.referrer_dept || '-',
+      '推荐人联系方式': entry.referrer_phone || '-',
       '备注': entry.remarks || '-',
       '提交时间': entry.created_at,
       '关联主填报人': '-'

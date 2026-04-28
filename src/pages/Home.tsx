@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
+import { motion } from 'motion/react';
 import { ChevronRight, Settings } from 'lucide-react';
 
 export default function Home() {
@@ -21,9 +21,23 @@ export default function Home() {
   if (!config) return <div className="p-10 text-center">加载中...</div>;
 
   const today = new Date().toISOString().split('T')[0];
-  const isEnded = today > config.end_date;
-  const isMaxed = stats.total >= config.max_registrations;
-  const isDisabled = isEnded || isMaxed;
+  
+  let statusText = '开始预约';
+  let isDisabled = false;
+
+  if (!config.is_active) {
+    statusText = '活动暂未开启';
+    isDisabled = true;
+  } else if (today < config.start_date) {
+    statusText = '活动还未开始';
+    isDisabled = true;
+  } else if (today > config.end_date) {
+    statusText = '活动已结束';
+    isDisabled = true;
+  } else if (stats.total >= config.max_registrations) {
+    statusText = '报名人数已满';
+    isDisabled = true;
+  }
 
   return (
     <div className="flex flex-col min-h-screen relative">
@@ -87,7 +101,7 @@ export default function Home() {
               : 'bg-natural-dark text-white active:scale-[0.98]'
           }`}
         >
-          {isEnded ? '活动已结束' : isMaxed ? '报名人数已满' : '开始预约'}
+          {statusText}
           {!isDisabled && <ChevronRight size={16} />}
         </button>
       </div>

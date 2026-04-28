@@ -10,6 +10,7 @@ import {
   Save, 
   RefreshCw,
   Search,
+  Check,
   ChevronRight,
   User,
   Users
@@ -21,7 +22,8 @@ export default function AdminDashboard() {
   const [entries, setEntries] = useState<any[]>([]);
   const [config, setConfig] = useState<any>(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [dateFilter, setDateFilter] = useState('');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
   const [saveStatus, setSaveStatus] = useState('');
 
   useEffect(() => {
@@ -96,9 +98,11 @@ export default function AdminDashboard() {
       e.id_number.includes(searchTerm) || 
       e.phone.includes(searchTerm);
     
-    if (dateFilter) {
+    if (startDate || endDate) {
       const entryDate = new Date(e.created_at).toISOString().split('T')[0];
-      return matchesSearch && entryDate === dateFilter;
+      const afterStart = startDate ? entryDate >= startDate : true;
+      const beforeEnd = endDate ? entryDate <= endDate : true;
+      return matchesSearch && afterStart && beforeEnd;
     }
     
     return matchesSearch;
@@ -180,18 +184,32 @@ export default function AdminDashboard() {
                   />
                 </div>
                 <div className="flex items-center gap-2">
-                  <input 
-                    type="date"
-                    value={dateFilter}
-                    onChange={(e) => setDateFilter(e.target.value)}
-                    className="px-4 py-2 bg-stone-50 border border-stone-100 rounded-xl text-xs outline-none"
-                  />
-                  {dateFilter && (
+                  <div className="flex flex-col sm:flex-row items-center gap-2">
+                    <div className="flex items-center gap-1">
+                      <span className="text-[10px] text-stone-400 font-bold uppercase">From</span>
+                      <input 
+                        type="date"
+                        value={startDate}
+                        onChange={(e) => setStartDate(e.target.value)}
+                        className="px-3 py-1.5 bg-stone-50 border border-stone-100 rounded-lg text-[10px] outline-none"
+                      />
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <span className="text-[10px] text-stone-400 font-bold uppercase">To</span>
+                      <input 
+                        type="date"
+                        value={endDate}
+                        onChange={(e) => setEndDate(e.target.value)}
+                        className="px-3 py-1.5 bg-stone-50 border border-stone-100 rounded-lg text-[10px] outline-none"
+                      />
+                    </div>
+                  </div>
+                  {(startDate || endDate) && (
                     <button 
-                      onClick={() => setDateFilter('')}
+                      onClick={() => { setStartDate(''); setEndDate(''); }}
                       className="text-[10px] text-stone-400 font-bold uppercase tracking-widest hover:text-natural-dark"
                     >
-                      Clear Date
+                      Clear Range
                     </button>
                   )}
                 </div>
@@ -268,6 +286,29 @@ export default function AdminDashboard() {
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="max-w-2xl">
             <form onSubmit={saveConfig} className="bg-white p-10 rounded-[32px] border border-stone-100 shadow-sm space-y-8">
               <div className="space-y-6">
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10px] uppercase font-bold text-stone-400 tracking-widest block">活动状态控制</label>
+                    <label className="flex items-center gap-3 cursor-pointer group">
+                      <div className={`w-10 h-5 rounded-full transition-colors relative ${config.is_active ? 'bg-natural-primary' : 'bg-stone-200'}`}>
+                        <div className={`absolute top-1 w-3 h-3 bg-white rounded-full transition-all ${config.is_active ? 'right-1' : 'left-1'}`} />
+                      </div>
+                      <input 
+                        type="checkbox" 
+                        checked={!!config.is_active}
+                        onChange={(e) => setConfig({...config, is_active: e.target.checked})}
+                        className="hidden"
+                      />
+                      <span className="text-xs font-medium text-stone-600">{config.is_active ? '活动开启中' : '活动已关闭'}</span>
+                    </label>
+                  </div>
+                  {!config.is_active && (
+                    <p className="text-[10px] text-red-400 bg-red-50 p-4 rounded-xl italic font-medium">
+                      注意：活动已手动关闭，填报页面将显示“活动暂未开启”。
+                    </p>
+                  )}
+                </div>
+
                 <div>
                   <label className="text-[10px] uppercase font-bold text-stone-400 tracking-widest block mb-2">活动显示标题</label>
                   <input 
@@ -360,39 +401,88 @@ export default function AdminDashboard() {
                   </div>
                 </div>
 
-                <div>
-                  <label className="text-[10px] uppercase font-bold text-stone-400 tracking-widest block mb-2">上车地点配置 (逗号分隔)</label>
-                  <input 
-                    type="text" 
-                    value={config.pickup_locations}
-                    onChange={(e) => setConfig({...config, pickup_locations: e.target.value})}
-                    placeholder="如：地点A,地点B,地点C"
-                    className="w-full border-b border-stone-100 py-2 text-sm focus:outline-none"
-                  />
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10px] uppercase font-bold text-stone-400 tracking-widest block">上车地点配置</label>
+                    <label className="flex items-center gap-3 cursor-pointer group">
+                      <div className={`w-5 h-5 rounded-md border-2 transition-colors ${config.show_pickup ? 'bg-natural-primary border-natural-primary' : 'border-stone-200'}`}>
+                        {!!config.show_pickup && <div className="w-full h-full flex items-center justify-center text-white"><Check size={12} /></div>}
+                      </div>
+                      <input 
+                        type="checkbox" 
+                        checked={!!config.show_pickup}
+                        onChange={(e) => setConfig({...config, show_pickup: e.target.checked})}
+                        className="hidden"
+                      />
+                      <span className="text-xs font-medium text-stone-600">启用上车地点选择</span>
+                    </label>
+                  </div>
+                  
+                  {config.show_pickup ? (
+                    <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }}>
+                      <input 
+                        type="text" 
+                        value={config.pickup_locations}
+                        onChange={(e) => setConfig({...config, pickup_locations: e.target.value})}
+                        placeholder="如：地点A,地点B,地点C (请用逗号分隔)"
+                        className="w-full border-b border-stone-100 py-2 text-sm focus:outline-none focus:border-natural-primary transition-colors"
+                      />
+                      <p className="text-[10px] text-stone-300 mt-2 italic">提示：填报人可在表单中选择预设的上车点</p>
+                    </motion.div>
+                  ) : (
+                    <p className="text-[10px] text-stone-300 bg-stone-50 p-4 rounded-xl italic">
+                      上车地点功能已禁用，填报页面将不会展示该选项。
+                    </p>
+                  )}
                 </div>
 
-                <div className="flex gap-8">
-                   <label className="flex items-center gap-3 cursor-pointer group">
-                     <div className={`w-5 h-5 rounded-md border-2 transition-colors ${config.show_transport ? 'bg-natural-primary border-natural-primary' : 'border-stone-200'}`}></div>
-                     <input 
-                       type="checkbox" 
-                       checked={!!config.show_transport}
-                       onChange={(e) => setConfig({...config, show_transport: e.target.checked})}
-                       className="hidden"
-                     />
-                     <span className="text-xs font-medium text-stone-600">展示交通方式</span>
-                   </label>
-                   <label className="flex items-center gap-3 cursor-pointer group">
-                     <div className={`w-5 h-5 rounded-md border-2 transition-colors ${config.show_pickup ? 'bg-natural-primary border-natural-primary' : 'border-stone-200'}`}></div>
-                     <input 
-                       type="checkbox" 
-                       checked={!!config.show_pickup}
-                       onChange={(e) => setConfig({...config, show_pickup: e.target.checked})}
-                       className="hidden"
-                     />
-                     <span className="text-xs font-medium text-stone-600">展示上车地点</span>
-                   </label>
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <label className="text-[10px] uppercase font-bold text-stone-400 tracking-widest block">推荐人信息配置</label>
+                    <label className="flex items-center gap-3 cursor-pointer group">
+                      <div className={`w-5 h-5 rounded-md border-2 transition-colors ${config.show_referrer ? 'bg-natural-primary border-natural-primary' : 'border-stone-200'}`}>
+                        {!!config.show_referrer && <div className="w-full h-full flex items-center justify-center text-white"><Check size={12} /></div>}
+                      </div>
+                      <input 
+                        type="checkbox" 
+                        checked={!!config.show_referrer}
+                        onChange={(e) => setConfig({...config, show_referrer: e.target.checked})}
+                        className="hidden"
+                      />
+                      <span className="text-xs font-medium text-stone-600">启用推荐人信息填报</span>
+                    </label>
+                  </div>
+                  {!config.show_referrer && (
+                    <p className="text-[10px] text-stone-300 bg-stone-50 p-4 rounded-xl italic">
+                      推荐人信息功能已禁用，填报页面将不会展示相关选项。
+                    </p>
+                  )}
                 </div>
+
+                <div className="space-y-4">
+                  <label className="text-[10px] uppercase font-bold text-stone-400 tracking-widest block">出行方式配置</label>
+                  <div className="flex gap-6">
+                    {[
+                      { value: 'both', label: '大巴和自驾' },
+                      { value: 'bus', label: '仅大巴车' },
+                      { value: 'car', label: '仅自驾出行' },
+                      { value: 'none', label: '不显示' }
+                    ].map((opt) => (
+                      <label key={opt.value} className="flex items-center gap-2 cursor-pointer group">
+                        <input 
+                          type="radio" 
+                          name="transport_config"
+                          checked={config.transport_config === opt.value}
+                          onChange={() => setConfig({...config, transport_config: opt.value})}
+                          className="w-4 h-4 accent-natural-primary"
+                        />
+                        <span className="text-xs font-medium text-stone-600">{opt.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+
               </div>
 
               <div className="pt-6 flex items-center justify-between">
