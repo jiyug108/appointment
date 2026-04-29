@@ -340,9 +340,8 @@ export default function FormPage() {
         {/* Header Summary */}
         <div className="pb-4">
           <h2 className="text-2xl font-light text-stone-900 tracking-tight leading-tight">
-            请完善您的<span className="font-medium text-natural-primary">行程预约资料</span>
+            请完善您的<span className="font-medium text-natural-primary">基本信息</span>
           </h2>
-          <p className="text-xs text-stone-400 mt-2">准确的信息将有助于我们为您提供更好的出行保障</p>
         </div>
 
         {/* Basic Info Section */}
@@ -529,7 +528,7 @@ export default function FormPage() {
                 )}
               </AnimatePresence>
 
-              {config.show_pickup && config.pickup_locations && (
+              {config.show_pickup && config.pickup_locations && formData.transport_type === '统一大巴车' && (
                 <div className="space-y-4">
                   <div className="flex items-center gap-2">
                     <span className="text-[10px] text-stone-400 font-bold uppercase tracking-widest">上车地点选择</span>
@@ -566,7 +565,7 @@ export default function FormPage() {
                 </div>
                 <div className="flex-1">
                   <p className={`text-xs font-bold transition-colors ${formData.luggage_confirmed ? 'text-stone-800' : 'text-stone-400'}`}>自备行李箱确认</p>
-                  <p className="text-[10px] text-stone-400 mt-1 leading-relaxed">本人已知晓活动当天需自备20寸及以上行李箱作为拍摄/活动道具</p>
+                  <p className="text-[10px] text-stone-400 mt-1 leading-relaxed">本人已知晓活动当天需自备20寸及以上行李箱作为活动道具</p>
                 </div>
               </div>
             </div>
@@ -796,7 +795,7 @@ export default function FormPage() {
           <div className="flex-1">
              <p className="text-[10px] font-bold text-white uppercase tracking-widest mb-1">隐私与服务条款</p>
              <p className="text-[10px] text-stone-400 leading-relaxed">
-              预约信息仅用于本次民航研学活动投保与统计。数据传输已通过 256 位加密处理。提交即代表您同意本平台的个人信息保护政策。
+              预约信息仅用于盛乐机场转运体验统计。数据传输已加密处理，提交即代表您同意本平台的个人信息保护政策。
             </p>
           </div>
         </div>

@@ -119,9 +119,9 @@ const defaultConfig = {
   max_age: 60
 };
 
-// We use INSERT OR REPLACE to force the update of the first config entry
+// We use INSERT OR IGNORE to only insert the default config if it doesn't already exist
 db.prepare(`
-  INSERT OR REPLACE INTO config (id, title, description, bg_image, transport_config, show_pickup, pickup_locations, show_referrer, referrer_config, is_active, max_companions, start_date, end_date, max_registrations, min_age, max_age)
+  INSERT OR IGNORE INTO config (id, title, description, bg_image, transport_config, show_pickup, pickup_locations, show_referrer, referrer_config, is_active, max_companions, start_date, end_date, max_registrations, min_age, max_age)
   VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `).run(
   defaultConfig.title, 
