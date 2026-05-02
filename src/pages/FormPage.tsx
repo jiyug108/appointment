@@ -272,6 +272,11 @@ export default function FormPage() {
       return;
     }
 
+    if (config.show_pickup && cleanedFormData.transport_type === '统一大巴车' && !cleanedFormData.pickup_location) {
+      alert('请选择您的上车地点');
+      return;
+    }
+
     const incompleteCompanion = cleanedFormData.companions.find(c => !c.name || !c.id_number || !c.phone || !c.birth_date);
     if (incompleteCompanion) {
       alert('所有同行人信息均为必填，请完善同行人资料');
@@ -529,7 +534,7 @@ export default function FormPage() {
               {config.show_pickup && config.pickup_locations && formData.transport_type === '统一大巴车' && (
                 <div className="space-y-4">
                   <div className="flex items-center gap-2">
-                    <span className="text-[10px] text-stone-400 font-bold uppercase tracking-widest">上车地点选择 (选填)</span>
+                    <span className="text-[10px] text-stone-400 font-bold uppercase tracking-widest">上车地点选择</span>
                   </div>
                   <div className="flex flex-wrap gap-2">
                     {config.pickup_locations.split(',').map((loc: string) => (
