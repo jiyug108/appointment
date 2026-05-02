@@ -131,13 +131,6 @@ export default function FormPage() {
         setConfig(data);
         const updates: any = {};
         
-        if (data.pickup_locations) {
-          const locations = data.pickup_locations.split(',');
-          if (locations.length > 0) {
-            updates.pickup_location = locations[0];
-          }
-        }
-        
         if (data.transport_config === 'car') {
           updates.transport_type = '自驾';
         } else if (data.transport_config === 'bus') {
@@ -531,14 +524,14 @@ export default function FormPage() {
               {config.show_pickup && config.pickup_locations && formData.transport_type === '统一大巴车' && (
                 <div className="space-y-4">
                   <div className="flex items-center gap-2">
-                    <span className="text-[10px] text-stone-400 font-bold uppercase tracking-widest">上车地点选择</span>
+                    <span className="text-[10px] text-stone-400 font-bold uppercase tracking-widest">上车地点选择 (选填)</span>
                   </div>
                   <div className="flex flex-wrap gap-2">
                     {config.pickup_locations.split(',').map((loc: string) => (
                       <button
                         key={loc}
                         type="button"
-                        onClick={() => handleInputChange('pickup_location', loc)}
+                        onClick={() => handleInputChange('pickup_location', formData.pickup_location === loc ? '' : loc)}
                         className={`px-5 py-2.5 rounded-full text-xs font-semibold border transition-all duration-300 ${
                           formData.pickup_location === loc
                           ? 'bg-natural-dark text-white border-natural-dark shadow-md'
