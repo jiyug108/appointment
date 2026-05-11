@@ -37,6 +37,7 @@ db.exec(`
     max_registrations INTEGER,
     min_age INTEGER DEFAULT 18,
     max_age INTEGER DEFAULT 60,
+    id_types TEXT DEFAULT '二代身份证,护照,港澳通行证',
     is_active BOOLEAN DEFAULT 1,
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
@@ -92,6 +93,18 @@ addColumn('config', 'max_age', 'INTEGER DEFAULT 60');
 addColumn('config', 'show_referrer', 'BOOLEAN DEFAULT 0');
 addColumn('config', 'referrer_config', 'TEXT DEFAULT "none"');
 addColumn('config', 'is_active', 'BOOLEAN DEFAULT 1');
+addColumn('config', 'id_types', "TEXT DEFAULT '二代身份证,护照,港澳通行证'");
+// Ensure existing config has id_types if it was null or contains invalid values
+const currentConfig = db.prepare('SELECT id_types FROM config WHERE id = 1').get() as any;
+if (currentConfig && currentConfig.id_types) {
+  const allowed = ['二代身份证', '护照', '港澳通行证'];
+  const filtered = currentConfig.id_types.split(',').filter((t: string) => allowed.includes(t)).join(',');
+  if (filtered !== currentConfig.id_types) {
+    db.prepare('UPDATE config SET id_types = ? WHERE id = 1').run(filtered || '二代身份证,护照,港澳通行证');
+  }
+} else if (currentConfig && !currentConfig.id_types) {
+  db.prepare("UPDATE config SET id_types = '二代身份证,护照,港澳通行证' WHERE id = 1").run();
+}
 addColumn('entries', 'gender', 'TEXT');
 addColumn('entries', 'first_time_flying', 'BOOLEAN DEFAULT 0');
 addColumn('entries', 'remarks', 'TEXT');
@@ -116,13 +129,14 @@ const defaultConfig = {
   end_date: '2026-12-31',
   max_registrations: 9999,
   min_age: 18,
-  max_age: 60
+  max_age: 60,
+  id_types: '二代身份证,护照,港澳通行证'
 };
 
 // We use INSERT OR IGNORE to only insert the default config if it doesn't already exist
 db.prepare(`
-  INSERT OR IGNORE INTO config (id, title, description, bg_image, transport_config, show_pickup, pickup_locations, show_referrer, referrer_config, is_active, max_companions, start_date, end_date, max_registrations, min_age, max_age)
-  VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  INSERT OR IGNORE INTO config (id, title, description, bg_image, transport_config, show_pickup, pickup_locations, show_referrer, referrer_config, is_active, max_companions, start_date, end_date, max_registrations, min_age, max_age, id_types)
+  VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `).run(
   defaultConfig.title, 
   defaultConfig.description, 
@@ -138,7 +152,8 @@ db.prepare(`
   defaultConfig.end_date,
   defaultConfig.max_registrations,
   defaultConfig.min_age,
-  defaultConfig.max_age
+  defaultConfig.max_age,
+  defaultConfig.id_types
 );
 
 app.use(express.json({ limit: '10mb' }));
@@ -150,7 +165,7 @@ app.get('/api/config', (req, res) => {
 });
 
 app.post('/api/config', (req, res) => {
-  const { title, description, bg_image, transport_config, show_pickup, pickup_locations, show_referrer, referrer_config, is_active, max_companions, start_date, end_date, max_registrations, min_age, max_age } = req.body;
+  const { title, description, bg_image, transport_config, show_pickup, pickup_locations, show_referrer, referrer_config, is_active, max_companions, start_date, end_date, max_registrations, min_age, max_age, id_types } = req.body;
   db.prepare(`
     UPDATE config SET 
       title = ?, description = ?, bg_image = ?, 
@@ -159,10 +174,10 @@ app.post('/api/config', (req, res) => {
       referrer_config = ?,
       is_active = ?, max_companions = ?,
       start_date = ?, end_date = ?, max_registrations = ?,
-      min_age = ?, max_age = ?,
+      min_age = ?, max_age = ?, id_types = ?,
       updated_at = CURRENT_TIMESTAMP
     WHERE id = 1
-  `).run(title, description, bg_image, transport_config, show_pickup ? 1 : 0, pickup_locations, show_referrer ? 1 : 0, referrer_config || 'none', is_active ? 1 : 0, max_companions, start_date, end_date, max_registrations, min_age, max_age);
+  `).run(title, description, bg_image, transport_config, show_pickup ? 1 : 0, pickup_locations, show_referrer ? 1 : 0, referrer_config || 'none', is_active ? 1 : 0, max_companions, start_date, end_date, max_registrations, min_age, max_age, id_types);
   res.json({ success: true });
 });
 

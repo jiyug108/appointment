@@ -436,6 +436,43 @@ export default function AdminDashboard() {
                   )}
                 </div>
 
+                <div className="space-y-4 pt-4 border-t border-stone-50">
+                  <label className="text-[10px] uppercase font-bold text-stone-400 tracking-widest block">证件类型配置</label>
+                  <div className="flex flex-wrap gap-2">
+                    {['二代身份证', '护照', '港澳通行证'].map((type) => {
+                      const selectedTypes = (config.id_types || '').split(',').filter(Boolean);
+                      const isSelected = selectedTypes.includes(type);
+                      return (
+                        <button
+                          key={type}
+                          type="button"
+                          onClick={() => {
+                            // Only keep types that are in our allowed list to prevent contaminated data
+                            const allowedList = ['二代身份证', '护照', '港澳通行证'];
+                            let currentSelected = selectedTypes.filter(t => allowedList.includes(t));
+                            
+                            let newTypes;
+                            if (currentSelected.includes(type)) {
+                              newTypes = currentSelected.filter(t => t !== type);
+                            } else {
+                              newTypes = [...currentSelected, type];
+                            }
+                            setConfig({...config, id_types: newTypes.join(',')});
+                          }}
+                          className={`px-4 py-2 rounded-full text-xs font-semibold border transition-all duration-300 ${
+                            isSelected
+                            ? 'bg-natural-dark text-white border-natural-dark shadow-md'
+                            : 'bg-white text-stone-500 border-stone-100 hover:border-stone-300'
+                          }`}
+                        >
+                          {type}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <p className="text-[10px] text-stone-300 mt-2 italic">提示：请选择允许用户填写的证件类型，填报页面将同步更新。</p>
+                </div>
+
                 <div className="space-y-4">
                   <label className="text-[10px] uppercase font-bold text-stone-400 tracking-widest block">推荐人信息配置</label>
                   <div className="flex flex-wrap gap-6">

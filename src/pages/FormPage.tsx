@@ -106,7 +106,7 @@ export default function FormPage() {
   // Form State
   const [formData, setFormData] = useState({
     name: '',
-    id_type: '身份证',
+    id_type: '',
     id_number: '',
     phone: '',
     birth_date: '',
@@ -164,7 +164,7 @@ export default function FormPage() {
       ...prev,
       companions: [...prev.companions, {
         name: '',
-        id_type: '身份证',
+        id_type: '',
         id_number: '',
         phone: '',
         birth_date: '',
@@ -200,7 +200,7 @@ export default function FormPage() {
 
   const validateIdNumber = (id: string, type: string) => {
     const trimmedId = id.trim();
-    if (type === '身份证') {
+    if (type === '身份证' || type === '二代身份证') {
       return /^[0-9]{17}[0-9Xx]$/.test(trimmedId);
     }
     return trimmedId.length >= 5; 
@@ -227,13 +227,18 @@ export default function FormPage() {
     };
 
     // Validations
-    if (!cleanedFormData.name || !cleanedFormData.id_number || !cleanedFormData.phone || !cleanedFormData.birth_date) {
+    if (!cleanedFormData.name || !cleanedFormData.id_type || !cleanedFormData.id_number || !cleanedFormData.phone || !cleanedFormData.birth_date) {
       alert('请完成主要人员的所有必填信息');
       return;
     }
 
-    if (!validateIdNumber(cleanedFormData.id_number, cleanedFormData.id_type)) {
-      alert(cleanedFormData.id_type === '身份证' ? '请输入正确的18位身份证号码' : '请输入有效的证件号码');
+    if (cleanedFormData.id_type === '二代身份证' || cleanedFormData.id_type === '身份证') {
+      if (!/^[0-9]{17}[0-9Xx]$/.test(cleanedFormData.id_number)) {
+        alert('请输入正确的18位身份证号码');
+        return;
+      }
+    } else if (cleanedFormData.id_number.length < 5) {
+      alert('请输入有效的证件号码');
       return;
     }
 
@@ -277,17 +282,23 @@ export default function FormPage() {
       return;
     }
 
-    const incompleteCompanion = cleanedFormData.companions.find(c => !c.name || !c.id_number || !c.phone || !c.birth_date);
+    const incompleteCompanion = cleanedFormData.companions.find(c => !c.name || !c.id_type || !c.id_number || !c.phone || !c.birth_date);
     if (incompleteCompanion) {
       alert('所有同行人信息均为必填，请完善同行人资料');
       return;
     }
 
     for (const comp of cleanedFormData.companions) {
-      if (!validateIdNumber(comp.id_number, comp.id_type)) {
+      if (comp.id_type === '二代身份证' || comp.id_type === '身份证') {
+        if (!/^[0-9]{17}[0-9Xx]$/.test(comp.id_number)) {
+          alert(`${comp.name} 的证件号码格式不正确 (需18位身份证)`);
+          return;
+        }
+      } else if (comp.id_number.length < 5) {
         alert(`${comp.name} 的证件号码格式不正确`);
         return;
       }
+      
       if (!validatePhone(comp.phone)) {
         alert(`${comp.name} 的手机号码格式不正确 (需11位)`);
         return;
@@ -373,18 +384,20 @@ export default function FormPage() {
               <div className="group">
                 <label className="text-[10px] uppercase font-bold text-stone-400 tracking-widest block mb-1 ml-1 group-focus-within:text-natural-primary transition-colors">证件类型</label>
                 <select 
+                  required
                   value={formData.id_type}
                   onChange={(e) => handleInputChange('id_type', e.target.value)}
                   className="w-full border-b border-stone-200 py-3 text-base focus:outline-none bg-transparent appearance-none"
                 >
-                  <option value="身份证">居民身份证</option>
-                  <option value="护照">护照</option>
-                  <option value="港澳通行证">港澳通行证</option>
+                  <option value="">请选择证件类型</option>
+                  {(config.id_types || '二代身份证,护照,港澳通行证').split(',').filter(Boolean).map((type: string) => (
+                    <option key={type} value={type}>{type}</option>
+                  ))}
                 </select>
               </div>
               
               <AnimatePresence>
-                {formData.id_type === '护照' && (
+                {(formData.id_type === '护照' || (formData.id_type && formData.id_type !== '二代身份证' && formData.id_type !== '身份证')) && (
                   <motion.div 
                     initial={{ opacity: 0, x: 20 }}
                     animate={{ opacity: 1, x: 0 }}
@@ -416,8 +429,8 @@ export default function FormPage() {
                 type="text" 
                 value={formData.id_number}
                 onChange={(e) => handleInputChange('id_number', e.target.value)}
-                placeholder={formData.id_type === '身份证' ? "18位二代身份证" : "请输入有效证件号"}
-                maxLength={formData.id_type === '身份证' ? 18 : 30}
+                placeholder={(formData.id_type === '身份证' || formData.id_type === '二代身份证') ? "18位二代身份证" : "请输入有效证件号"}
+                maxLength={(formData.id_type === '身份证' || formData.id_type === '二代身份证') ? 18 : 30}
                 className="w-full border-b border-stone-200 py-3 text-base focus:outline-none focus:border-natural-primary transition-colors bg-transparent placeholder:text-stone-300"
               />
             </div>
@@ -726,16 +739,18 @@ export default function FormPage() {
                     <div className="group">
                       <label className="text-[10px] uppercase font-bold text-stone-400 tracking-widest block mb-1 ml-1 group-focus-within:text-natural-primary transition-colors">证件类型</label>
                       <select 
+                        required
                         value={comp.id_type}
                         onChange={(e) => updateCompanion(idx, 'id_type', e.target.value)}
                         className="w-full border-b border-stone-200 py-2 text-base focus:outline-none bg-transparent appearance-none"
                       >
-                        <option value="身份证">身份证</option>
-                        <option value="护照">护照</option>
-                        <option value="港澳通行证">港澳通行证</option>
+                        <option value="">请选择证件类型</option>
+                        {(config.id_types || '二代身份证,护照,港澳通行证').split(',').filter(Boolean).map((type: string) => (
+                          <option key={type} value={type}>{type}</option>
+                        ))}
                       </select>
                     </div>
-                    {comp.id_type === '护照' && (
+                    {(comp.id_type === '护照' || (comp.id_type && comp.id_type !== '二代身份证' && comp.id_type !== '身份证')) && (
                       <div className="group">
                         <label className="text-[10px] uppercase font-bold text-stone-400 tracking-widest block mb-2 ml-1">性别</label>
                         <div className="flex gap-4">
@@ -762,7 +777,7 @@ export default function FormPage() {
                       type="text" 
                       value={comp.id_number}
                       onChange={(e) => updateCompanion(idx, 'id_number', e.target.value)}
-                      placeholder={comp.id_type === '身份证' ? "18位号码" : "证件号"}
+                      placeholder={(comp.id_type === '身份证' || comp.id_type === '二代身份证') ? "18位号码" : "证件号"}
                       className="w-full border-b border-stone-200 py-2 text-base focus:outline-none focus:border-natural-primary transition-colors bg-transparent placeholder:text-stone-200"
                     />
                   </div>
