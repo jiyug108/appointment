@@ -272,7 +272,7 @@ export default function AdminDashboard() {
                           </span>
                         </td>
                         <td className="px-8 py-5 text-right">
-                          <p className="text-xs font-medium text-stone-600">{new Date(entry.created_at).toLocaleDateString()}</p>
+                          <p className="text-xs font-medium text-stone-600 font-mono">{entry.created_at}</p>
                           <p className="text-[9px] text-stone-300 uppercase tracking-tighter mt-0.5">Submitted On</p>
                         </td>
                       </tr>

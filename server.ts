@@ -19,6 +19,47 @@ if (!fs.existsSync(dataDir)) {
 }
 const db = new Database(path.join(dataDir, 'travel_info.db'));
 
+function formatToBeijingTime(dateInput: string | Date | null | undefined): string {
+  if (!dateInput) return '-';
+  try {
+    let date: Date;
+    if (typeof dateInput === 'string') {
+      let cleanInput = dateInput.trim();
+      if (!cleanInput.endsWith('Z') && !/[+-]\d{2}:?\d{2}$/.test(cleanInput)) {
+        if (cleanInput.includes(' ') && !cleanInput.includes('T')) {
+          cleanInput = cleanInput.replace(' ', 'T');
+        }
+        cleanInput = cleanInput + 'Z';
+      }
+      date = new Date(cleanInput);
+    } else {
+      date = dateInput;
+    }
+
+    if (isNaN(date.getTime())) {
+      return String(dateInput);
+    }
+
+    const formatter = new Intl.DateTimeFormat('zh-CN', {
+      timeZone: 'Asia/Shanghai',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false
+    });
+
+    const parts = formatter.formatToParts(date);
+    const partMap = Object.fromEntries(parts.map(p => [p.type, p.value]));
+    return `${partMap.year}-${partMap.month}-${partMap.day} ${partMap.hour}:${partMap.minute}:${partMap.second}`;
+  } catch (e) {
+    console.error('Error formatting date to Beijing time:', e);
+    return String(dateInput);
+  }
+}
+
 // Initialize tables
 db.exec(`
   CREATE TABLE IF NOT EXISTS config (
@@ -190,6 +231,24 @@ app.post('/api/enroll', (req, res) => {
     companions 
   } = req.body;
 
+  // Check registration limit (total of entries + companions)
+  const config = db.prepare('SELECT max_registrations FROM config WHERE id = 1').get() as { max_registrations: number } | undefined;
+  if (config) {
+    const entriesCount = db.prepare('SELECT COUNT(*) as count FROM entries').get() as { count: number };
+    const companionsCount = db.prepare('SELECT COUNT(*) as count FROM companions').get() as { count: number };
+    const currentTotal = entriesCount.count + companionsCount.count;
+    
+    const companionCount = (companions && Array.isArray(companions)) ? companions.length : 0;
+    const requestedCount = 1 + companionCount;
+    
+    if (currentTotal + requestedCount > config.max_registrations) {
+      const remaining = Math.max(0, config.max_registrations - currentTotal);
+      return res.status(400).json({ 
+        error: `报名人数已满或超额。当前仅剩 ${remaining} 个名额，本次提交包含 ${requestedCount} 人（主填报人及 ${companionCount} 名同行人）。` 
+      });
+    }
+  }
+
   // Duplicate check (Check both main entries and companions)
   const idNumbers = [id_number, ...(companions?.map((c: any) => c.id_number) || [])];
   
@@ -207,13 +266,15 @@ app.post('/api/enroll', (req, res) => {
         name, id_type, id_number, phone, birth_date, gender, remarks,
         first_time_flying,
         transport_type, car_number, pickup_location, luggage_confirmed,
-        referrer_type, referrer_name, referrer_dept, referrer_phone
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        referrer_type, referrer_name, referrer_dept, referrer_phone,
+        created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       name, id_type, id_number, phone, birth_date, gender, remarks || '', 
       first_time_flying ? 1 : 0,
       transport_type, car_number, pickup_location, luggage_confirmed ? 1 : 0,
-      referrer_type, referrer_name, referrer_dept, referrer_phone
+      referrer_type, referrer_name, referrer_dept, referrer_phone,
+      new Date().toISOString()
     );
 
     const entryId = result.lastInsertRowid;
@@ -250,8 +311,9 @@ app.post('/api/clear-data', (req, res) => {
 });
 
 app.get('/api/stats', (req, res) => {
-  const count = db.prepare('SELECT COUNT(*) as total FROM entries').get() as { total: number };
-  res.json(count);
+  const entriesCount = db.prepare('SELECT COUNT(*) as count FROM entries').get() as { count: number };
+  const companionsCount = db.prepare('SELECT COUNT(*) as count FROM companions').get() as { count: number };
+  res.json({ total: entriesCount.count + companionsCount.count });
 });
 
 app.get('/api/entries', (req, res) => {
@@ -259,7 +321,11 @@ app.get('/api/entries', (req, res) => {
   // Join companions (optional: could do separate query or nested)
   const results = entries.map((entry: any) => {
     const comps = db.prepare('SELECT * FROM companions WHERE entry_id = ?').all(entry.id);
-    return { ...entry, companions: comps };
+    return { 
+      ...entry, 
+      created_at: formatToBeijingTime(entry.created_at),
+      companions: comps 
+    };
   });
   res.json(results);
 });
@@ -270,6 +336,7 @@ app.get('/api/export', (req, res) => {
   
   for (const entry of entries as any[]) {
     const companions = db.prepare('SELECT * FROM companions WHERE entry_id = ?').all(entry.id);
+    const beijingTime = formatToBeijingTime(entry.created_at);
     
     // Main person row
     data.push({
@@ -289,7 +356,7 @@ app.get('/api/export', (req, res) => {
       '推荐人部门': entry.referrer_dept || '-',
       '推荐人联系方式': entry.referrer_phone || '-',
       '备注': entry.remarks || '-',
-      '提交时间': entry.created_at,
+      '提交时间': beijingTime,
       '关联主填报人': '-'
     });
 
@@ -299,15 +366,20 @@ app.get('/api/export', (req, res) => {
         '类型': '同行人',
         '姓名': comp.name,
         '性别': comp.gender || '-',
+        '是否第一次乘坐飞机': '-',
         '证件类型': comp.id_type,
         '证件号': comp.id_number,
         '手机号': comp.phone,
         '出生日期': comp.birth_date,
-        '交通方式': '-',
-        '车牌号': '-',
-        '上车地点': '-',
+        '交通方式': entry.transport_type,
+        '车牌号': entry.car_number || '无',
+        '上车地点': entry.pickup_location,
+        '推荐人类型': entry.referrer_type || '-',
+        '推荐人姓名': entry.referrer_name || '-',
+        '推荐人部门': entry.referrer_dept || '-',
+        '推荐人联系方式': entry.referrer_phone || '-',
         '备注': entry.remarks || '-',
-        '提交时间': '-',
+        '提交时间': beijingTime,
         '关联主填报人': entry.name
       });
     }
